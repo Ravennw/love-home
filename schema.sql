@@ -88,3 +88,52 @@ CREATE TABLE IF NOT EXISTS state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- 10-25 改版：每天一句话 + 时光记忆本 + 一起做的事（学习 / 电影 / 音乐 / 成长）
+
+-- 每天一句话：每人每天一句，能改不能多
+CREATE TABLE IF NOT EXISTS lines (
+  day TEXT NOT NULL,
+  user TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (day, user)
+);
+
+-- 时光记忆本：值得记住的事，可配照片（照片在 KV）
+CREATE TABLE IF NOT EXISTS memories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  photo_key TEXT,
+  author TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+-- 一起做的事共用一张表：kind = learn 学习 / film 电影 / song 音乐 / goal 成长
+-- status：want 想做 / doing 在做 / done 做完；owner：raven / billy / both
+CREATE TABLE IF NOT EXISTS items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  sub TEXT,
+  link TEXT,
+  owner TEXT NOT NULL,
+  status TEXT NOT NULL,
+  done_day TEXT,
+  author TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_items_kind ON items(kind);
+
+-- 每条下面两个人各自写的话：电影短评、学完的收获、听歌的感受、成长的进展
+CREATE TABLE IF NOT EXISTS comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL,
+  user TEXT NOT NULL,
+  text TEXT NOT NULL,
+  day TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comments_item ON comments(item_id);

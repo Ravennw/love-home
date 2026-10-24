@@ -1,11 +1,12 @@
 // home.ravenweng.com —— Raven & Billy 的小窝
 // 静态页面由 [assets] 提供，这里只处理 /api/*
 
-import { QUESTIONS } from './questions.js';
-
 const USERS = ['raven', 'billy'];
-const WEATHERS = ['sunny', 'cloudy', 'rainy', 'stormy', 'rainbow', 'snowy'];
 const CATEGORIES = ['avoid', 'allergy', 'love', 'dislike', 'habit'];
+// 一起做的事：学习 / 电影 / 音乐 / 成长；状态 想做 / 在做 / 做完
+const KINDS = ['learn', 'film', 'song', 'goal'];
+const STATUSES = ['want', 'doing', 'done'];
+const OWNERS = ['raven', 'billy', 'both'];
 const SESSION_DAYS = 60;
 const DAY_MS = 86400000;
 
@@ -51,7 +52,18 @@ async function route(request, env, url) {
   const R = `${method} /${seg[2] || ''}${seg[3] ? (Number.isInteger(id) && id > 0 ? '/:id' : `/${seg[3]}`) : ''}${seg[4] ? `/${seg[4]}` : ''}`;
   switch (R) {
     case 'GET /home': return home(env, me);
-    case 'POST /mood': return setMood(request, env, me);
+    case 'POST /line': return setLine(request, env, me);
+    case 'POST /meet': return setMeet(request, env);
+    case 'POST /where': return setWhere(request, env, me);
+    case 'GET /memory': return listMemory(env, me);
+    case 'POST /memories': return addMemory(request, env, me);
+    case 'DELETE /memories/:id': return delMemory(env, id);
+    case 'GET /items': return listItems(env, url.searchParams.get('kind'));
+    case 'POST /items': return addItem(request, env, me);
+    case 'POST /items/:id/status': return setItemStatus(request, env, id);
+    case 'DELETE /items/:id': return delItem(env, id);
+    case 'POST /items/:id/comments': return addComment(request, env, me, id);
+    case 'DELETE /comments/:id': return delOwn(env, 'comments', 'user', id, me);
     case 'GET /manual': return listManual(env);
     case 'POST /manual': return addManual(request, env, me);
     case 'DELETE /manual/:id': return del(env, 'manual_items', id);
@@ -60,12 +72,6 @@ async function route(request, env, url) {
     case 'DELETE /juice/:id': return delOwn(env, 'juice_checkins', 'user', id, me);
     case 'GET /shop': return json({ picks: await getState(env, 'shop', []) });
     case 'POST /shop': return setShop(request, env);
-    case 'POST /meet': return setMeet(request, env);
-    case 'POST /notes': return addNote(request, env, me);
-    case 'GET /notes': return json({ items: await listNotes(env, 100), names: names(env) });
-    case 'POST /where': return setWhere(request, env, me);
-    case 'GET /ask': return getAsk(env, me);
-    case 'POST /ask': return answer(request, env, me);
     case 'GET /places': return listPlaces(env);
     case 'POST /places': return addPlace(request, env, me);
     case 'POST /places/:id/been': return markBeen(env, id);
@@ -150,56 +156,151 @@ function isDay(s) {
 
 async function home(env, me) {
   const day = today(env);
-  const [{ results: moods }, juice, ask, meet, notes, where] = await Promise.all([
-    env.DB.prepare(
-      `SELECT m.user, m.day, m.weather, m.note FROM moods m
-       JOIN (SELECT user, MAX(day) AS day FROM moods GROUP BY user) last
-         ON last.user = m.user AND last.day = m.day`,
-    ).all(),
+  const yesterday = dayOf(Date.parse(`${day}T12:00:00+08:00`) - DAY_MS, env);
+  const all = (sql, ...b) => env.DB.prepare(sql).bind(...b).all().then((r) => r.results);
+  const [lines, juice, meet, where, doing, films, song, goals] = await Promise.all([
+    all('SELECT day, user, text FROM lines WHERE day IN (?, ?)', day, yesterday),
     lastDrinks(env),
-    askStatus(env, day, me),
     getState(env, 'meet', null),
-    listNotes(env, 40),
     getState(env, 'where', {}),
+    all("SELECT id, title, owner FROM items WHERE kind = 'learn' AND status = 'doing' ORDER BY created_at DESC LIMIT 3"),
+    all("SELECT id, title FROM items WHERE kind = 'film' AND status != 'done' ORDER BY created_at DESC"),
+    env.DB.prepare("SELECT id, title, sub, author FROM items WHERE kind = 'song' ORDER BY created_at DESC LIMIT 1").first(),
+    all("SELECT id, title, owner FROM items WHERE kind = 'goal' AND status != 'done' ORDER BY created_at"),
   ]);
-  // 打开首页就算看过了对方留的纸条：记下这次打开的时间；这次返回的仍是之前的已读状态，界面能标「新」
-  await setState(env, `seen:${me}`, Date.now());
+  const pick = (d) => Object.fromEntries(USERS.map((u) => [u, lines.find((l) => l.day === d && l.user === u)?.text ?? null]));
   return json({
     me,
     names: names(env),
     today: day,
     anniversary: env.ANNIVERSARY,
     daysTogether: daysBetween(env.ANNIVERSARY, day) + 1,
-    moods: Object.fromEntries(moods.map((m) => [m.user, m])),
+    lines: { today: pick(day), yesterday: pick(yesterday) },
     juice,
-    ask,
     meet: meet && meet.day >= day ? { ...meet, daysLeft: daysBetween(day, meet.day) } : null,
-    notes,
     where,
+    together: { learning: doing, films: { count: films.length, next: films[0] || null }, song, goals },
   });
 }
 
-// 纸条：text 为空就是一下「想你了」。每张单独一行（state 里 key 为 note:时间），两人同时发也不会互相覆盖；
-// 已读不逐条存，看收件人最后一次打开首页的时间（seen:用户）
-async function addNote(request, env, me) {
+// ---------- 每天一句话 ----------
+// 每人每天一句，当天可以改；不提醒、不计数
+
+async function setLine(request, env, me) {
   const { text } = await request.json();
-  const at = Date.now();
-  await setState(env, `note:${String(at).padStart(15, '0')}-${crypto.randomUUID().slice(0, 8)}`, { from: me, text: clip(text, 200) || '', at });
+  const t = clip(text, 140);
+  if (!t) throw new HttpError(400, '写一句吧');
+  await env.DB.prepare(
+    `INSERT INTO lines (day, user, text, created_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(day, user) DO UPDATE SET text = excluded.text`,
+  ).bind(today(env), me, t, Date.now()).run();
   return json({ ok: true });
 }
 
-async function listNotes(env, limit) {
-  const [{ results }, seen] = await Promise.all([
-    env.DB.prepare("SELECT key, value FROM state WHERE key LIKE 'note:%' ORDER BY key DESC LIMIT ?").bind(limit).all(),
-    Promise.all(USERS.map((u) => getState(env, `seen:${u}`, 0))),
+// ---------- 时光记忆本 ----------
+// 记忆 + 每天一句话的历史放在一起看；写给未来的信仍走 /letters
+
+async function listMemory(env) {
+  const [{ results: memories }, { results: lines }] = await Promise.all([
+    env.DB.prepare('SELECT * FROM memories ORDER BY day DESC, created_at DESC').all(),
+    env.DB.prepare('SELECT day, user, text FROM lines ORDER BY day DESC LIMIT 730').all(),
   ]);
-  const seenBy = Object.fromEntries(USERS.map((u, i) => [u, seen[i]]));
-  return results.map((r) => {
-    const n = JSON.parse(r.value);
-    const to = USERS.find((u) => u !== n.from);
-    return { id: r.key, ...n, read: seenBy[to] >= n.at };
+  const byDay = new Map();
+  for (const l of lines) {
+    if (!byDay.has(l.day)) byDay.set(l.day, {});
+    byDay.get(l.day)[l.user] = l.text;
+  }
+  return json({
+    memories,
+    lines: [...byDay].map(([day, t]) => ({ day, ...t })),
+    names: names(env),
+    today: today(env),
   });
 }
+
+async function addMemory(request, env, me) {
+  const form = await request.formData();
+  const title = clip(form.get('title'), 60);
+  const day = form.get('day');
+  if (!title) throw new HttpError(400, '给这段记忆起个标题');
+  if (!isDay(day)) throw new HttpError(400, '日期不对');
+  const photoKey = await savePhoto(env, form.get('photo'), 'memory', me);
+  await env.DB.prepare(
+    'INSERT INTO memories (day, title, body, photo_key, author, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).bind(day, title, clip(form.get('body'), 3000), photoKey, me, Date.now()).run();
+  return json({ ok: true });
+}
+
+async function delMemory(env, id) {
+  const row = await env.DB.prepare('SELECT photo_key FROM memories WHERE id = ?').bind(id).first();
+  if (row?.photo_key) await env.PHOTOS.delete(row.photo_key);
+  return del(env, 'memories', id);
+}
+
+// ---------- 一起做的事：学习 / 电影 / 音乐 / 成长 ----------
+// 共用 items 表；每条下面两个人各写的话在 comments（短评、收获、感受、进展）
+
+async function listItems(env, kind) {
+  if (!KINDS.includes(kind)) throw new HttpError(400, '没有这一类');
+  const [{ results: items }, { results: comments }] = await Promise.all([
+    env.DB.prepare('SELECT * FROM items WHERE kind = ? ORDER BY created_at DESC').bind(kind).all(),
+    env.DB.prepare(
+      'SELECT c.* FROM comments c JOIN items i ON i.id = c.item_id WHERE i.kind = ? ORDER BY c.created_at',
+    ).bind(kind).all(),
+  ]);
+  const by = new Map();
+  for (const c of comments) {
+    if (!by.has(c.item_id)) by.set(c.item_id, []);
+    by.get(c.item_id).push(c);
+  }
+  return json({ items: items.map((i) => ({ ...i, comments: by.get(i.id) || [] })), names: names(env), today: today(env) });
+}
+
+async function addItem(request, env, me) {
+  const { kind, title, sub, link, owner, status, note } = await request.json();
+  if (!KINDS.includes(kind)) throw new HttpError(400, '没有这一类');
+  const t = clip(title, 80);
+  if (!t) throw new HttpError(400, '写个名字');
+  const st = STATUSES.includes(status) ? status : 'want';
+  const url = clip(link, 300);
+  if (url && !/^https?:\/\//.test(url)) throw new HttpError(400, '链接要以 http 开头');
+  const day = today(env);
+  const { meta } = await env.DB.prepare(
+    'INSERT INTO items (kind, title, sub, link, owner, status, done_day, author, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).bind(kind, t, clip(sub, 60), url, OWNERS.includes(owner) ? owner : 'both', st, st === 'done' ? day : null, me, Date.now()).run();
+  const n = clip(note, 300);
+  if (n) {
+    await env.DB.prepare('INSERT INTO comments (item_id, user, text, day, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(meta.last_row_id, me, n, day, Date.now()).run();
+  }
+  return json({ ok: true, id: meta.last_row_id });
+}
+
+async function setItemStatus(request, env, id) {
+  const { status } = await request.json();
+  if (!STATUSES.includes(status)) throw new HttpError(400, '状态不对');
+  await env.DB.prepare('UPDATE items SET status = ?, done_day = ? WHERE id = ?')
+    .bind(status, status === 'done' ? today(env) : null, id).run();
+  return json({ ok: true });
+}
+
+async function delItem(env, id) {
+  await env.DB.prepare('DELETE FROM comments WHERE item_id = ?').bind(id).run();
+  return del(env, 'items', id);
+}
+
+async function addComment(request, env, me, id) {
+  const { text } = await request.json();
+  const t = clip(text, 300);
+  if (!t) throw new HttpError(400, '写一句吧');
+  const item = await env.DB.prepare('SELECT id FROM items WHERE id = ?').bind(id).first();
+  if (!item) throw new HttpError(404, '这一条不在了');
+  await env.DB.prepare('INSERT INTO comments (item_id, user, text, day, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, me, t, today(env), Date.now()).run();
+  return json({ ok: true });
+}
+
+
 
 // 各自在哪个城市，用来显示对方那边现在几点
 async function setWhere(request, env, me) {
@@ -228,16 +329,6 @@ async function setMeet(request, env) {
   return json({ ok: true });
 }
 
-async function setMood(request, env, me) {
-  const { weather, note } = await request.json();
-  if (!WEATHERS.includes(weather)) throw new HttpError(400, '没有这种天气');
-  await env.DB.prepare(
-    `INSERT INTO moods (user, day, weather, note, created_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(user, day) DO UPDATE SET weather = excluded.weather, note = excluded.note,
-       created_at = excluded.created_at`,
-  ).bind(me, today(env), weather, clip(note, 80), Date.now()).run();
-  return json({ ok: true });
-}
 
 // ---------- 对方说明书 ----------
 
@@ -295,54 +386,9 @@ async function setShop(request, env) {
   return json({ ok: true, picks: clean });
 }
 
-// ---------- 每日一问 ----------
-// 自己没答之前，接口不返回对方的答案
 
-function questionFor(env, day) {
-  const n = Math.max(0, daysBetween(env.ANNIVERSARY, day));
-  return QUESTIONS[n % QUESTIONS.length];
-}
 
-async function askStatus(env, day, me) {
-  const { results } = await env.DB.prepare('SELECT user FROM answers WHERE day = ?').bind(day).all();
-  const done = new Set(results.map((r) => r.user));
-  return {
-    question: questionFor(env, day),
-    done: Object.fromEntries(USERS.map((u) => [u, done.has(u)])),
-    mine: done.has(me),
-  };
-}
 
-async function getAsk(env, me) {
-  const day = today(env);
-  const { results } = await env.DB.prepare(
-    'SELECT day, user, text FROM answers ORDER BY day DESC LIMIT 400',
-  ).all();
-  const byDay = new Map();
-  for (const r of results) {
-    if (!byDay.has(r.day)) byDay.set(r.day, {});
-    byDay.get(r.day)[r.user] = r.text;
-  }
-  // 自己答过才能看到对方的；自己没答，对方的只告诉你"已答"（true）
-  const reveal = (d, a) => ({
-    day: d,
-    question: questionFor(env, d),
-    answers: Object.fromEntries(USERS.map((u) => [u, u === me || a[me] ? a[u] ?? null : a[u] ? true : null])),
-  });
-  const todays = reveal(day, byDay.get(day) || {});
-  const past = [...byDay].filter(([d]) => d !== day).map(([d, a]) => reveal(d, a));
-  return json({ today: todays, past, names: names(env) });
-}
-
-async function answer(request, env, me) {
-  const { text } = await request.json();
-  if (!text || !text.trim()) throw new HttpError(400, '写点什么吧');
-  await env.DB.prepare(
-    `INSERT INTO answers (day, user, text, created_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(day, user) DO UPDATE SET text = excluded.text`,
-  ).bind(today(env), me, clip(text, 1000), Date.now()).run();
-  return json({ ok: true });
-}
 
 // ---------- 地图 + 愿望清单 ----------
 
