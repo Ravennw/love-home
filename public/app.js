@@ -56,6 +56,13 @@ const post = (path, body = {}) => api(path, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 });
 const remove = (path) => api(path, { method: 'DELETE' });
+// 必填项为空就在前端拦下：提示一下、聚焦那一格，不发请求（免得服务器回 400、控制台报红）
+function missing(input, msg) {
+  if (input.value.trim()) return false;
+  toast(msg);
+  input.focus();
+  return true;
+}
 
 function toast(msg) {
   const el = document.getElementById('toast');
@@ -404,6 +411,7 @@ async function renderHome() {
   });
   app.querySelector('#lineForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (missing(e.target.text, '写一句吧')) return;
     try {
       await post('/line', { text: e.target.text.value });
       lineEditing = false;
@@ -512,6 +520,7 @@ async function renderMemory() {
     const getPhoto = form ? photoPicker(form.querySelector('.shot')) : null;
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (missing(form.title, '给这段记忆起个标题')) return;
       const fd = new FormData();
       fd.append('title', form.title.value);
       fd.append('day', form.day.value);
@@ -580,6 +589,7 @@ function bindLetters(data, rerender) {
   app.querySelector('#letterForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
+    if (missing(f.title, '给信起个标题') || missing(f.body, '正文还空着')) return;
     try {
       await post('/letters', { to: f.to.value, title: f.title.value, body: f.body.value, openOn: f.openOn.value });
       toast('封好了');
@@ -742,6 +752,7 @@ async function renderItems(kind) {
   app.querySelector('#itemForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
+    if (missing(f.title, '写个名字')) return;
     try {
       await post('/items', {
         kind,
@@ -942,7 +953,7 @@ async function renderManual() {
       <h3>记一条</h3>
       <form class="form add" id="manualForm">
         <select name="category">${Object.entries(CATEGORIES).map(([k, [t]]) => `<option value="${k}" ${k === 'avoid' ? 'selected' : ''}>${t}</option>`).join('')}</select>
-        <input type="text" name="text" maxlength="60" placeholder="比如 香菜、虾、少冰" required>
+        <input type="text" name="text" maxlength="60" placeholder="比如 香菜、虾、少冰">
         <input type="text" name="note" maxlength="200" placeholder="补充一句（选填）">
         <button class="btn dark">记进 ${nm(manualAbout)} 的说明书</button>
       </form>
@@ -961,6 +972,7 @@ async function renderManual() {
   app.querySelector('#manualForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
+    if (missing(f.text, '写一下是什么')) return;
     try {
       await post('/manual', { about: manualAbout, category: f.category.value, text: f.text.value, note: f.note.value });
       toast('记下了');
@@ -1069,6 +1081,7 @@ async function renderMap() {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!pin) return toast('先在地图上点一下位置');
+      if (missing(form.name, '写一下地名')) return;
       const fd = new FormData();
       fd.append('kind', placeKind);
       fd.append('name', form.name.value);
@@ -1104,6 +1117,7 @@ async function renderMap() {
   } else {
     app.querySelector('#wishForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (missing(e.target.text, '写一个愿望')) return;
       try {
         await post('/wishes', { text: e.target.text.value });
         renderMap();
