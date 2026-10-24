@@ -1170,4 +1170,9 @@ function showPlace(p) {
 }
 
 // 先确认登录状态再进页面；没登录直接显示登录页
-api('/session').then(({ me: who }) => (who ? router() : renderLogin())).catch(() => renderLogin());
+// 顺便拿到名字，进内页时 ensureMe() 就不用再请求一次 /home（跨境一个往返几百毫秒）
+api('/session').then((s) => {
+  if (s.names) names = s.names;
+  me = s.me;
+  return me ? router() : renderLogin();
+}).catch(() => renderLogin());

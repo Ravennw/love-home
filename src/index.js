@@ -44,7 +44,7 @@ async function route(request, env, url) {
   }
   const s = await session(request, env);
   // 打开网站先问一下登没登录：没登录返回 me: null（200），不用拿 401 当信号，控制台不报红
-  if (pathname === '/api/session' && method === 'GET') return renew(json({ me: s?.user ?? null }), s, env);
+  if (pathname === '/api/session' && method === 'GET') return renew(json({ me: s?.user ?? null, names: names(env) }), s, env);
   if (!s) throw new HttpError(401, '请先登录');
   return renew(await dispatch(request, env, url, s.user, seg, id), s, env);
 }
