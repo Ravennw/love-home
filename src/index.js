@@ -9,18 +9,6 @@ const CATEGORIES = ['avoid', 'allergy', 'love', 'dislike', 'habit'];
 const SESSION_DAYS = 60;
 const DAY_MS = 86400000;
 
-// 植物成长：每样小事加多少分，到多少分进下一个阶段
-const POINTS = { juice: 10, litCycle: 20, answer: 5, bothAnswered: 10, mood: 2, water: 3, wish: 15, place: 10, letter: 10 };
-const STAGES = [
-  { at: 0, name: '一颗种子' },
-  { at: 40, name: '冒芽了' },
-  { at: 150, name: '小苗' },
-  { at: 350, name: '长出花苞' },
-  { at: 700, name: '开花了' },
-  { at: 1200, name: '结果了' },
-];
-const WILT_DAYS = 3;
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -69,15 +57,12 @@ async function route(request, env, url) {
     case 'DELETE /manual/:id': return del(env, 'manual_items', id);
     case 'GET /juice': return listJuice(env);
     case 'POST /juice': return addJuice(request, env, me);
-    case 'POST /juice/:id/like': return likeJuice(env, me, id);
     case 'DELETE /juice/:id': return delOwn(env, 'juice_checkins', 'user', id, me);
     case 'GET /shop': return json({ picks: await getState(env, 'shop', []) });
     case 'POST /shop': return setShop(request, env);
+    case 'POST /meet': return setMeet(request, env);
     case 'GET /ask': return getAsk(env, me);
     case 'POST /ask': return answer(request, env, me);
-    case 'GET /plant': return json(await plant(env, today(env)));
-    case 'POST /plant/water': return water(env, me);
-    case 'POST /plant/name': return namePlant(request, env);
     case 'GET /places': return listPlaces(env);
     case 'POST /places': return addPlace(request, env, me);
     case 'POST /places/:id/been': return markBeen(env, id);
@@ -89,7 +74,6 @@ async function route(request, env, url) {
     case 'GET /letters': return listLetters(env, me);
     case 'POST /letters': return addLetter(request, env, me);
     case 'DELETE /letters/:id': return delOwn(env, 'letters', 'author', id, me);
-    case 'GET /report': return report(env, Number(url.searchParams.get('year')) || Number(today(env).slice(0, 4)));
     default: throw new HttpError(404, '没有这个接口');
   }
 }
@@ -151,10 +135,6 @@ function daysBetween(from, to) {
   return Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS);
 }
 
-function addDays(day, n) {
-  return new Date(Date.parse(day) + n * DAY_MS).toISOString().slice(0, 10);
-}
-
 function names(env) {
   return { raven: env.NAME_RAVEN || 'Raven', billy: env.NAME_BILLY || 'Billy' };
 }
@@ -167,15 +147,15 @@ function isDay(s) {
 
 async function home(env, me) {
   const day = today(env);
-  const [{ results: moods }, juice, ask, pl] = await Promise.all([
+  const [{ results: moods }, juice, ask, meet] = await Promise.all([
     env.DB.prepare(
       `SELECT m.user, m.day, m.weather, m.note FROM moods m
        JOIN (SELECT user, MAX(day) AS day FROM moods GROUP BY user) last
          ON last.user = m.user AND last.day = m.day`,
     ).all(),
-    juiceStatus(env, day),
+    lastDrinks(env),
     askStatus(env, day, me),
-    plant(env, day),
+    getState(env, 'meet', null),
   ]);
   return json({
     me,
@@ -186,8 +166,20 @@ async function home(env, me) {
     moods: Object.fromEntries(moods.map((m) => [m.user, m])),
     juice,
     ask,
-    plant: pl,
+    meet: meet && meet.day >= day ? { ...meet, daysLeft: daysBetween(day, meet.day) } : null,
   });
+}
+
+// 下次见面：两个人共用一个日期和地点，清空就传空日期
+async function setMeet(request, env) {
+  const { day, place } = await request.json();
+  if (!day) {
+    await setState(env, 'meet', null);
+    return json({ ok: true });
+  }
+  if (!isDay(day)) throw new HttpError(400, '日期不对');
+  await setState(env, 'meet', { day, place: clip(place, 40) || '' });
+  return json({ ok: true });
 }
 
 async function setMood(request, env, me) {
@@ -222,89 +214,30 @@ async function addManual(request, env, me) {
 }
 
 // ---------- 果蔬汁 ----------
-// 从纪念日开始每 JUICE_CYCLE_DAYS 天为一轮，两人在同一轮里都喝过，这轮才算"点亮"。
-// 连胜 = 从上一轮往回数连续点亮的轮数；本轮若已点亮再加一，本轮还没结束不算断。
+// 不算轮次、不算连胜：只记谁哪天喝了哪杯，让对方看得到，喝不喝、喝哪杯自己定
 
-async function juiceCycles(env) {
-  const size = Number(env.JUICE_CYCLE_DAYS || 3);
-  const start = env.ANNIVERSARY;
-  const cycleOf = (d) => Math.floor(daysBetween(start, d) / size);
+async function lastDrinks(env) {
   const { results } = await env.DB.prepare(
-    'SELECT DISTINCT user, day FROM juice_checkins WHERE day >= ?',
-  ).bind(start).all();
-  const done = new Map(); // 轮次 -> Set(user)
-  for (const r of results) {
-    const c = cycleOf(r.day);
-    if (!done.has(c)) done.set(c, new Set());
-    done.get(c).add(r.user);
-  }
-  const lit = (c) => (done.get(c)?.size || 0) === USERS.length;
-  return { size, start, cycleOf, done, lit, rows: results };
-}
-
-async function juiceStatus(env, day) {
-  const { size, start, cycleOf, done, lit, rows } = await juiceCycles(env);
-  const current = cycleOf(day);
-
-  let streak = 0;
-  for (let c = current - 1; c >= 0 && lit(c); c--) streak++;
-  if (lit(current)) streak++;
-
-  let best = 0;
-  let run = 0;
-  for (let c = 0; c <= current; c++) {
-    run = lit(c) ? run + 1 : 0;
-    best = Math.max(best, run);
-  }
-
-  const cycleStart = addDays(start, Math.max(current, 0) * size);
-  const cycleEnd = addDays(cycleStart, size - 1);
-  const thisCycle = done.get(current) || new Set();
-  return {
-    cycleDays: size,
-    cycleStart,
-    cycleEnd,
-    daysLeft: daysBetween(day, cycleEnd) + 1,
-    done: Object.fromEntries(USERS.map((u) => [u, thisCycle.has(u)])),
-    streak,
-    best,
-    total: rows.length,
-  };
+    `SELECT c.user, c.day, c.recipe_id, c.recipe FROM juice_checkins c
+     JOIN (SELECT user, MAX(created_at) AS t FROM juice_checkins GROUP BY user) last
+       ON last.user = c.user AND last.t = c.created_at`,
+  ).all();
+  return Object.fromEntries(USERS.map((u) => [u, results.find((r) => r.user === u) || null]));
 }
 
 async function listJuice(env) {
-  const [{ results }, status] = await Promise.all([
-    env.DB.prepare('SELECT * FROM juice_checkins ORDER BY created_at DESC LIMIT 60').all(),
-    juiceStatus(env, today(env)),
+  const [{ results }, last] = await Promise.all([
+    env.DB.prepare('SELECT id, user, day, recipe_id, recipe FROM juice_checkins ORDER BY created_at DESC LIMIT 60').all(),
+    lastDrinks(env),
   ]);
-  return json({ items: results, names: names(env), status });
+  return json({ items: results, last, names: names(env), today: today(env) });
 }
 
 async function addJuice(request, env, me) {
-  let fields;
-  let file = null;
-  if ((request.headers.get('Content-Type') || '').includes('multipart/form-data')) {
-    const form = await request.formData();
-    fields = Object.fromEntries(['recipe_id', 'recipe', 'note'].map((k) => [k, form.get(k)]));
-    file = form.get('photo');
-  } else {
-    fields = await request.json();
-  }
-  const photoKey = await savePhoto(env, file, 'juice', me);
+  const { recipe_id, recipe } = await request.json();
   await env.DB.prepare(
-    'INSERT INTO juice_checkins (user, day, recipe_id, recipe, note, photo_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-  ).bind(
-    me, today(env), clip(fields.recipe_id, 20), clip(fields.recipe, 100), clip(fields.note, 200),
-    photoKey, Date.now(),
-  ).run();
-  return json({ ok: true, juice: await juiceStatus(env, today(env)) });
-}
-
-async function likeJuice(env, me, id) {
-  // 只能给对方的那杯点爱心，再点一次取消
-  await env.DB.prepare(
-    'UPDATE juice_checkins SET liked = 1 - liked WHERE id = ? AND user != ?',
-  ).bind(id, me).run();
+    'INSERT INTO juice_checkins (user, day, recipe_id, recipe, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).bind(me, today(env), clip(recipe_id, 20), clip(recipe, 100), Date.now()).run();
   return json({ ok: true });
 }
 
@@ -362,70 +295,6 @@ async function answer(request, env, me) {
     `INSERT INTO answers (day, user, text, created_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(day, user) DO UPDATE SET text = excluded.text`,
   ).bind(today(env), me, clip(text, 1000), Date.now()).run();
-  return json({ ok: true });
-}
-
-// ---------- 共养植物 ----------
-// 成长值不单独存，每次从各张表现算：喝果蔬汁、答题、写心情、浇水、完成愿望、去新地方、写信都会让它长大
-
-async function plant(env, day) {
-  const q = (sql, ...b) => env.DB.prepare(sql).bind(...b).first();
-  const [cycles, juiceN, answerN, bothN, moodN, waterN, wishN, placeN, letterN, last, waterToday, name] = await Promise.all([
-    juiceCycles(env),
-    q('SELECT COUNT(*) AS n FROM (SELECT DISTINCT user, day FROM juice_checkins)'),
-    q('SELECT COUNT(*) AS n FROM answers'),
-    q('SELECT COUNT(*) AS n FROM (SELECT day FROM answers GROUP BY day HAVING COUNT(*) = 2)'),
-    q('SELECT COUNT(*) AS n FROM moods'),
-    q('SELECT COUNT(*) AS n FROM waters'),
-    q('SELECT COUNT(*) AS n FROM wishes WHERE done_day IS NOT NULL'),
-    q("SELECT COUNT(*) AS n FROM places WHERE kind = 'been'"),
-    q('SELECT COUNT(*) AS n FROM letters'),
-    q(`SELECT MAX(t) AS t FROM (
-         SELECT MAX(created_at) AS t FROM juice_checkins UNION ALL SELECT MAX(created_at) FROM answers
-         UNION ALL SELECT MAX(created_at) FROM moods UNION ALL SELECT MAX(created_at) FROM waters)`),
-    env.DB.prepare('SELECT user FROM waters WHERE day = ?').bind(day).all(),
-    getState(env, 'plant_name', ''),
-  ]);
-  let lit = 0;
-  for (const c of cycles.done.keys()) if (cycles.lit(c)) lit++;
-  const parts = {
-    juice: juiceN.n * POINTS.juice + lit * POINTS.litCycle,
-    ask: answerN.n * POINTS.answer + bothN.n * POINTS.bothAnswered,
-    mood: moodN.n * POINTS.mood,
-    water: waterN.n * POINTS.water,
-    life: wishN.n * POINTS.wish + placeN.n * POINTS.place + letterN.n * POINTS.letter,
-  };
-  const points = Object.values(parts).reduce((a, b) => a + b, 0);
-  let stage = 0;
-  STAGES.forEach((s, i) => { if (points >= s.at) stage = i; });
-  const next = STAGES[stage + 1];
-  const lastDay = last?.t ? dayOf(last.t, env) : null;
-  const idle = lastDay ? daysBetween(lastDay, day) : daysBetween(env.ANNIVERSARY, day);
-  return {
-    name,
-    points,
-    parts,
-    stage,
-    stageName: STAGES[stage].name,
-    stages: STAGES,
-    nextAt: next ? next.at : null,
-    prevAt: STAGES[stage].at,
-    wilted: idle >= WILT_DAYS,
-    idle,
-    wateredToday: Object.fromEntries(USERS.map((u) => [u, waterToday.results.some((r) => r.user === u)])),
-    rules: POINTS,
-  };
-}
-
-async function water(env, me) {
-  await env.DB.prepare('INSERT OR IGNORE INTO waters (day, user, created_at) VALUES (?, ?, ?)')
-    .bind(today(env), me, Date.now()).run();
-  return json(await plant(env, today(env)));
-}
-
-async function namePlant(request, env) {
-  const { name } = await request.json();
-  await setState(env, 'plant_name', clip(name, 20) || '');
   return json({ ok: true });
 }
 
@@ -519,65 +388,6 @@ async function addLetter(request, env, me) {
     'INSERT INTO letters (author, to_user, title, body, open_on, created_at) VALUES (?, ?, ?, ?, ?, ?)',
   ).bind(me, to, clip(title, 40), clip(body, 5000), openOn, Date.now()).run();
   return json({ ok: true });
-}
-
-// ---------- 恋爱年报 ----------
-
-async function report(env, year) {
-  const from = `${year}-01-01`;
-  const to = `${year}-12-31`;
-  const ms = [Date.parse(`${from}T00:00:00+08:00`), Date.parse(`${year + 1}-01-01T00:00:00+08:00`)];
-  const all = (sql, ...b) => env.DB.prepare(sql).bind(...b).all().then((r) => r.results);
-  const one = (sql, ...b) => env.DB.prepare(sql).bind(...b).first();
-  const day = today(env);
-  const end = to < day ? to : day;
-  const start = from > env.ANNIVERSARY ? from : env.ANNIVERSARY;
-
-  const [juiceByUser, recipes, moodsByUser, answersN, bothN, been, wishesDone, letters, manualN, cycles] = await Promise.all([
-    all('SELECT user, COUNT(*) AS n FROM juice_checkins WHERE day BETWEEN ? AND ? GROUP BY user', from, to),
-    all(`SELECT recipe_id, MAX(recipe) AS recipe, COUNT(*) AS n FROM juice_checkins WHERE day BETWEEN ? AND ?
-         GROUP BY COALESCE(recipe_id, recipe) ORDER BY n DESC LIMIT 5`, from, to),
-    all('SELECT user, weather, COUNT(*) AS n FROM moods WHERE day BETWEEN ? AND ? GROUP BY user, weather', from, to),
-    one('SELECT COUNT(*) AS n FROM answers WHERE day BETWEEN ? AND ?', from, to),
-    one('SELECT COUNT(*) AS n FROM (SELECT day FROM answers WHERE day BETWEEN ? AND ? GROUP BY day HAVING COUNT(*) = 2)', from, to),
-    all("SELECT name, day FROM places WHERE kind = 'been' AND COALESCE(day, '') BETWEEN ? AND ? ORDER BY day", from, to),
-    all('SELECT text, done_day FROM wishes WHERE done_day BETWEEN ? AND ? ORDER BY done_day', from, to),
-    one('SELECT COUNT(*) AS n FROM letters WHERE created_at >= ? AND created_at < ?', ...ms),
-    one('SELECT COUNT(*) AS n FROM manual_items WHERE created_at >= ? AND created_at < ?', ...ms),
-    juiceCycles(env),
-  ]);
-
-  let litCycles = 0;
-  let best = 0;
-  let run = 0;
-  for (let c = Math.max(0, cycles.cycleOf(start)); c <= cycles.cycleOf(end); c++) {
-    if (cycles.lit(c)) litCycles++;
-    run = cycles.lit(c) ? run + 1 : 0;
-    best = Math.max(best, run);
-  }
-
-  const moods = {};
-  for (const r of moodsByUser) {
-    moods[r.user] ??= {};
-    moods[r.user][r.weather] = r.n;
-  }
-  return json({
-    year,
-    names: names(env),
-    days: end >= start ? daysBetween(start, end) + 1 : 0,
-    juice: {
-      byUser: Object.fromEntries(USERS.map((u) => [u, juiceByUser.find((r) => r.user === u)?.n || 0])),
-      top: recipes,
-      litCycles,
-      bestStreak: best,
-    },
-    moods,
-    ask: { answers: answersN.n, bothDays: bothN.n },
-    been,
-    wishesDone,
-    letters: letters.n,
-    manual: manualN.n,
-  });
 }
 
 // ---------- 照片（Workers KV） ----------

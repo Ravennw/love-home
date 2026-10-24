@@ -17,11 +17,8 @@ const WEATHERS = {
 const ICON = {
   x: svg('<path d="M6 6l12 12M18 6L6 18" stroke-width="2"/>'),
   camera: svg('<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>'),
-  heart: svg('<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>'),
-  heartOn: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
   check: svg('<path d="M5 12.5l4.5 4.5L19 7.5" stroke-width="2"/>'),
   lock: svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>'),
-  drop: svg('<path d="M12 3.5s6 6.4 6 10.5a6 6 0 0 1-12 0c0-4.1 6-10.5 6-10.5z"/>'),
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
 };
 const CATEGORIES = {
@@ -34,8 +31,8 @@ const CATEGORIES = {
 const USERS = ['raven', 'billy'];
 const other = (u) => (u === 'raven' ? 'billy' : 'raven');
 const TABS = {
-  home: ['HOME', '首页'], juice: ['JUICE', '果蔬汁'], ask: ['ASK', '每日一问'], plant: ['PLANT', '我们的植物'],
-  map: ['MAP', '地图和愿望'], capsule: ['CAPSULE', '时光胶囊'], manual: ['MANUAL', '对方说明书'], year: ['YEAR', '恋爱年报'],
+  home: ['HOME', '首页'], ask: ['ASK', '每日一问'], juice: ['JUICE', '果蔬汁'],
+  map: ['MAP', '地图和愿望'], capsule: ['CAPSULE', '时光胶囊'], manual: ['MANUAL', '对方说明书'],
 };
 
 let me = null;
@@ -74,6 +71,12 @@ function toast(msg) {
 
 function todayStr() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
+}
+
+// 距今天几天：今天 / 昨天 / N 天前
+function ago(day) {
+  const n = Math.round((Date.parse(todayStr()) - Date.parse(day)) / 86400000);
+  return n <= 0 ? '今天' : n === 1 ? '昨天' : `${n} 天前`;
 }
 
 function fmtDay(day) {
@@ -170,8 +173,8 @@ async function ensureMe() {
 // ---------- 路由和导航 ----------
 
 const routes = {
-  '': renderHome, juice: renderJuice, ask: renderAsk, plant: renderPlant,
-  map: renderMap, capsule: renderCapsule, manual: renderManual, year: renderYear,
+  '': renderHome, ask: renderAsk, juice: renderJuice,
+  map: renderMap, capsule: renderCapsule, manual: renderManual,
 };
 let lastRoute = null;
 
@@ -255,12 +258,9 @@ function renderLogin() {
 
 // ---------- Home ----------
 
-function juiceHint(j) {
-  if (j.done.raven && j.done.billy) return '这一轮两个人都喝了';
-  const left = j.daysLeft === 1 ? '今天是这一轮最后一天' : `这一轮还剩 ${j.daysLeft} 天`;
-  const missing = USERS.filter((u) => !j.done[u]);
-  if (missing.length === 2) return `${left}，两个人都还没喝`;
-  return `${left}，等 ${nm(missing[0])} 喝一杯`;
+// 果蔬汁不算轮次：只说两个人最近一次喝是哪天，看得到对方就够了
+function drinkText(d) {
+  return d ? `${ago(d.day)}喝了${d.recipe ? ` ${esc(d.recipe)}` : ''}` : '还没喝过';
 }
 
 function askHint(a) {
@@ -275,7 +275,7 @@ async function renderHome() {
   me = data.me;
   names = data.names;
   bar.hidden = false;
-  const { juice: j, ask: a, plant: p } = data;
+  const { juice: j, ask: a, meet } = data;
   const mine = data.moods[me];
   const todayMine = mine && mine.day === data.today ? mine : null;
 
@@ -288,7 +288,14 @@ async function renderHome() {
   };
   const dots = (done) => `<span class="dots">${USERS.map((u) => `<span class="${done[u] ? 'ok' : ''}">${nm(u)}</span>`).join('')}</span>`;
   const line = (href, k, v, hint, done) => `<a class="line" href="${href}">
-    <span class="k">${k}</span><div class="v"><b>${v}</b><p>${hint}</p></div>${dots(done)}<i>${ICON.arrow}</i></a>`;
+    <span class="k">${k}</span><div class="v"><b>${v}</b><p>${hint}</p></div>${done ? dots(done) : ''}<i>${ICON.arrow}</i></a>`;
+  const drankToday = Object.fromEntries(USERS.map((u) => [u, j[u]?.day === data.today]));
+  const meetLine = `<button type="button" class="line" data-meet>
+    <span class="k">下次见面</span>
+    <div class="v">${meet
+      ? `<b>${meet.daysLeft === 0 ? '就是今天' : `还有 ${meet.daysLeft} 天`}</b><p>${fmtDay(meet.day)}${meet.place ? ` · ${esc(meet.place)}` : ''}</p>`
+      : '<b>还没定</b><p>定一个日子，两个人一起倒数</p>'}</div>
+    <i>${ICON.arrow}</i></button>`;
 
   paint(`
     <section class="hero">
@@ -313,9 +320,9 @@ async function renderHome() {
       <div class="box">
         <div class="box-h"><i></i>Today<span>今天的小事</span></div>
         <div class="well lines">
+          ${meetLine}
           ${line('#/ask', '每日一问', esc(a.question), askHint(a), a.done)}
-          ${line('#/juice', '果蔬汁', `${j.streak} 轮连胜`, juiceHint(j), j.done)}
-          ${line('#/plant', esc(p.name || '我们的植物'), esc(p.stageName), p.wilted ? `${p.idle} 天没人照顾，有点蔫了` : `成长值 ${p.points} · 今天浇水了吗`, p.wateredToday)}
+          ${line('#/juice', '果蔬汁', `${nm(other(me))} ${drinkText(j[other(me)])}`, `你${drinkText(j[me])}`, drankToday)}
         </div>
       </div>
     </section>`);
@@ -325,6 +332,19 @@ async function renderHome() {
     toast('心情已更新');
     renderHome();
   }));
+  app.querySelector('[data-meet]').addEventListener('click', async () => {
+    const v = await dialog(`<h3>下次见面</h3><p>两个人看到的是同一个倒数。日期清空就是还没定。</p>
+      <div class="add two" style="margin-top:12px">
+        <input type="date" id="meetDay" value="${meet?.day || ''}" min="${data.today}">
+        <input type="text" id="meetPlace" maxlength="40" value="${esc(meet?.place || '')}" placeholder="在哪儿见（选填）">
+      </div>
+      <div class="acts" style="margin-top:16px"><button class="btn" data-a="no">取消</button><button class="btn dark" data-a="ok">好了</button></div>`,
+    { onOk: (m) => ({ day: m.querySelector('#meetDay').value, place: m.querySelector('#meetPlace').value }) });
+    if (!v) return;
+    await post('/meet', v);
+    toast(v.day ? '开始倒数了' : '先不定');
+    renderHome();
+  });
   app.querySelector('#moodForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!todayMine) return toast('再点一个天气就保存好了');
@@ -336,22 +356,18 @@ async function renderHome() {
 
 // ---------- Juice：照主站 Wellness 的「抗炎果蔬汁」栏目 ----------
 
-let juiceTab = 'recipes';
 let todayPick = '';
 
 async function renderJuice() {
   const [list, shop] = await Promise.all([api('/juice'), api('/shop'), loadRecipes(), ensureMe()]);
   names = list.names;
   bar.hidden = false;
-  const j = list.status;
   const picks = new Set(shop.picks);
-  const counts = {};
-  for (const c of list.items) counts[c.recipe_id] = (counts[c.recipe_id] || 0) + 1;
-  const today = todayStr();
+  const mineToday = (id) => list.items.find((c) => c.recipe_id === id && c.user === me && c.day === list.today);
 
   const card = (r) => {
     const on = picks.has(r.id);
-    const drankToday = list.items.some((c) => c.recipe_id === r.id && c.user === me && c.day === today);
+    const cup = mineToday(r.id);
     return `<article class="wl-card${todayPick === r.id ? ' today' : ''}" id="wl-${r.id}" style="--c:${r.color}">
       <div class="wl-ph"><img src="/recipes/${r.img}.webp" alt="${esc(r.name)}" loading="lazy" decoding="async"><span class="wl-for">${esc(r.for)}</span></div>
       <div class="wl-in">
@@ -362,58 +378,27 @@ async function renderJuice() {
         <h4>做法</h4><ol class="wl-steps">${r.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
         <p class="wl-key"><b>主要成分</b>${esc(r.key)}</p>
         ${r.care ? `<p class="wl-care"><b>注意</b>${esc(r.care)}</p>` : ''}
-        <div class="wl-drank"><span>${counts[r.id] ? `我们喝过 ${counts[r.id]} 次` : '还没喝过'}</span>
-          <button class="btn${drankToday ? '' : ' dark'}" data-drank="${r.id}" ${drankToday ? 'disabled' : ''}>${drankToday ? '今天喝过了' : '我喝了这杯'}</button></div>
+        <div class="wl-drank">${cup
+          ? `<span>今天喝的是这杯</span><button class="btn" data-undo="${cup.id}">记错了</button>`
+          : `<span>喝了就点一下，${nm(other(me))} 看得到</span><button class="btn dark" data-drank="${r.id}">我喝了这杯</button>`}</div>
       </div></article>`;
   };
 
   const shopList = shopping(picks);
-  const recipesView = `
-    <p class="intro">一人份、破壁机几分钟就能做完的抗炎果蔬汁。勾选几款「加入清单」，下面会合成一份两个人共用的购物清单；喝完在卡片上点「我喝了这杯」，每 ${j.cycleDays} 天两个人都喝过，这一轮就点亮。</p>
-    <div class="wl-status">
-      <span>本轮 ${fmtDay(j.cycleStart)} - ${fmtDay(j.cycleEnd)}</span>
-      ${USERS.map((u) => `<b class="${j.done[u] ? 'ok' : ''}">${nm(u)} ${j.done[u] ? '已喝' : '还没喝'}</b>`).join('')}
-      <em>${j.streak} 轮连胜 · 最长 ${j.best} 轮</em>
-    </div>
+  paint(win('Juice', '果蔬汁 · 一人份的抗炎配方，喝哪杯、什么时候喝自己定', `
+    <div class="wl-status">${USERS.map((u) => `<b class="${list.last[u]?.day === list.today ? 'ok' : ''}">${u === me ? '你' : `${nm(u)} `}${drinkText(list.last[u])}</b>`).join('')}</div>
     ${todayPick ? (() => { const r = recipeById(todayPick); return `<div class="wl-today" style="--c:${r.color}"><img src="/recipes/${r.img}.webp" alt=""><span>今天喝</span><b>${esc(r.name)}</b><em>${esc(r.line)}</em><button class="btn" data-today>换一款</button></div>`; })() : ''}
     <div class="wl-grid">${R.juices.map(card).join('')}</div>
     <section class="wl-shop"><h3>购物清单<span>${picks.size ? `已选 ${picks.size} 款 · 两个人看到的是同一份` : '在卡片上点「加入清单」'}</span>
       ${picks.size ? '<button class="btn" data-clear>清空</button><button class="btn" data-copy>复制清单</button>' : ''}</h3>
       ${shopList.length ? `<ul>${shopList.map((i) => `<li><span>${esc(i[0])}</span><b>${esc(i[1])}</b></li>`).join('')}</ul>` : ''}</section>
-    <section class="wl-notes"><h3>喝之前知道</h3><ul>${(R.notes || []).map((n) => `<li>${esc(n)}</li>`).join('')}</ul></section>`;
-
-  const logView = list.items.length ? `<div class="log">${list.items.map((c) => {
-    const r = recipeById(c.recipe_id);
-    const mineCup = c.user === me;
-    const like = mineCup
-      ? (c.liked ? `<span class="like on">${ICON.heartOn}${nm(other(me))} 点了</span>` : '')
-      : `<button class="like ${c.liked ? 'on' : ''}" data-like="${c.id}">${c.liked ? ICON.heartOn : ICON.heart}${c.liked ? '已点' : '点个爱心'}</button>`;
-    const img = c.photo_key ? `/api/photo/${encodeURIComponent(c.photo_key)}` : r ? `/recipes/${r.img}.webp` : '';
-    return `<div class="log-row" style="--c:${r ? r.color : '#898989'}">
-      ${img ? `<img src="${img}" alt="" loading="lazy">` : '<span class="noimg"></span>'}
-      <div class="t"><b><i></i>${esc(c.recipe || r?.name || '一杯果蔬汁')}</b><span>${nm(c.user)} · ${fmtDay(c.day)}</span></div>
-      ${like}
-      ${mineCup ? `<button class="mini" data-undo="${c.id}">撤销</button>` : ''}
-    </div>`;
-  }).join('')}</div>` : '<p class="empty">还没有人喝过，第一杯是谁的？</p>';
-
-  paint(win('Juice', `果蔬汁 · 每 ${j.cycleDays} 天一轮，两个人都喝过才点亮`, `
-    <div class="seg">
-      <button type="button" data-jtab="recipes" class="${juiceTab === 'recipes' ? 'on' : ''}">抗炎果蔬汁</button>
-      <button type="button" data-jtab="log" class="${juiceTab === 'log' ? 'on' : ''}">喝过的 · ${list.items.length}</button>
-    </div>
-    ${juiceTab === 'recipes' ? recipesView : logView}`,
+    <section class="wl-notes"><h3>喝之前知道</h3><ul>${(R.notes || []).map((n) => `<li>${esc(n)}</li>`).join('')}</ul></section>`,
   '<button class="btn" data-today>今天喝什么</button>'));
 
-  app.querySelectorAll('[data-jtab]').forEach((b) => b.addEventListener('click', () => {
-    juiceTab = b.dataset.jtab;
-    renderJuice();
-  }));
   app.querySelectorAll('[data-today]').forEach((b) => b.addEventListener('click', async () => {
     let k;
     do k = R.juices[Math.floor(Math.random() * R.juices.length)].id; while (R.juices.length > 1 && k === todayPick);
     todayPick = k;
-    juiceTab = 'recipes';
     await renderJuice();
     document.getElementById(`wl-${k}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }));
@@ -433,16 +418,11 @@ async function renderJuice() {
   app.querySelectorAll('[data-drank]').forEach((b) => b.addEventListener('click', async () => {
     const r = recipeById(b.dataset.drank);
     b.disabled = true;
-    const res = await post('/juice', { recipe_id: r.id, recipe: r.name });
-    toast(res.juice.done.raven && res.juice.done.billy ? '这一轮点亮了' : `记下了，等 ${names[other(me)]}`);
-    renderJuice();
-  }));
-  app.querySelectorAll('[data-like]').forEach((b) => b.addEventListener('click', async () => {
-    await post(`/juice/${b.dataset.like}/like`);
+    await post('/juice', { recipe_id: r.id, recipe: r.name });
+    toast(`记下了，${names[other(me)]} 看得到`);
     renderJuice();
   }));
   app.querySelectorAll('[data-undo]').forEach((b) => b.addEventListener('click', async () => {
-    if (!(await confirmBox('撤销这一杯？', '这次记录会删掉，这一轮的状态也会跟着变。', '撤销'))) return;
     await remove(`/juice/${b.dataset.undo}`);
     renderJuice();
   }));
@@ -521,89 +501,6 @@ async function renderAsk() {
     } catch (err) {
       toast(err.message);
     }
-  });
-}
-
-// ---------- Plant：共养植物 ----------
-
-// 6 个阶段的线稿：同一个花盆往上长；颜色取自果蔬汁配方的低饱和色，只做小点缀
-function plantSvg(stage, wilted) {
-  const ink = wilted ? '#9a9a9a' : '#0a0a0a';
-  const leaf = wilted ? '#cfcabd' : '#77845a';
-  const flower = wilted ? '#d3c4c4' : '#9d2933';
-  const fruit = wilted ? '#d6cabd' : '#b5652b';
-  const top = [196, 172, 140, 104, 82, 74][stage];
-  const tx = wilted && stage ? 116 : 100;
-  const leafAt = (x, y, rot, s = 1) => `<path d="M0 0c8-10 22-10 28 0c-8 8-20 8-28 0z" transform="translate(${x} ${y}) rotate(${rot + (wilted ? 25 : 0)}) scale(${s})" fill="${leaf}" stroke="${ink}" stroke-width="1.2"/>`;
-  const parts = [];
-  if (stage === 0) {
-    parts.push(`<ellipse cx="100" cy="194" rx="7" ry="4.5" fill="#7d6a58" stroke="${ink}" stroke-width="1.2"/>`);
-  } else {
-    parts.push(`<path d="M100 200 C100 ${(200 + top) / 2} ${tx} ${top + 24} ${tx} ${top}" fill="none" stroke="${ink}" stroke-width="1.6"/>`);
-    parts.push(leafAt(100, 184, -150, 0.7), leafAt(100, 184, -30, 0.7));
-  }
-  if (stage >= 2) parts.push(leafAt(101, 162, -160, 0.9), leafAt(101, 152, -20, 0.9));
-  if (stage >= 3) parts.push(leafAt(103, 130, -165), leafAt(104, 120, -15));
-  if (stage === 3) parts.push(`<path d="M${tx - 7} ${top + 2}q7 -20 14 0q-7 6 -14 0z" fill="${flower}" stroke="${ink}" stroke-width="1.2"/>`);
-  if (stage >= 4) {
-    parts.push([0, 72, 144, 216, 288].map((a) => `<ellipse cx="${tx}" cy="${top - 11}" rx="7" ry="12" transform="rotate(${a} ${tx} ${top})" fill="${flower}" stroke="${ink}" stroke-width="1.2"/>`).join(''));
-    parts.push(`<circle cx="${tx}" cy="${top}" r="5" fill="#d9b680" stroke="${ink}" stroke-width="1.2"/>`);
-  }
-  if (stage >= 5) parts.push(`<circle cx="82" cy="132" r="6" fill="${fruit}" stroke="${ink}" stroke-width="1.2"/><circle cx="124" cy="142" r="6" fill="${fruit}" stroke="${ink}" stroke-width="1.2"/>`);
-  return `<svg class="plant-svg" viewBox="0 40 200 220" aria-hidden="true">
-    ${parts.join('')}
-    <path d="M64 200h72l-8 52h-56z" fill="#f2efe9" stroke="${ink}" stroke-width="1.6" stroke-linejoin="round"/>
-    <path d="M58 200h84" stroke="${ink}" stroke-width="2.4" stroke-linecap="round"/>
-  </svg>`;
-}
-
-async function renderPlant() {
-  const [p] = await Promise.all([api('/plant'), ensureMe()]);
-  bar.hidden = false;
-  const span = p.nextAt ? p.nextAt - p.prevAt : 1;
-  const pct = p.nextAt ? Math.min(100, Math.round(((p.points - p.prevAt) / span) * 100)) : 100;
-  const PARTS = [['juice', '果蔬汁'], ['ask', '每日一问'], ['mood', '心情天气'], ['water', '浇水'], ['life', '愿望、足迹、信']];
-  const RULES = [
-    ['每人喝一杯果蔬汁', p.rules.juice], ['一轮两个人都喝了', p.rules.litCycle], ['答一次每日一问', p.rules.answer],
-    ['同一天两个人都答了', p.rules.bothAnswered], ['写一次心情天气', p.rules.mood], ['每人每天浇一次水', p.rules.water],
-    ['完成一个愿望', p.rules.wish], ['去了一个新地方', p.rules.place], ['写一封时光胶囊', p.rules.letter],
-  ];
-
-  paint(win('Plant', '我们的植物 · 两个人一起照顾它，三天没人管会蔫', `
-    <div class="plant">
-      <div class="plant-stage">
-        ${plantSvg(p.stage, p.wilted)}
-        <div class="plant-name"><h3>${esc(p.name || '还没有名字')}</h3><button class="mini" data-rename>${p.name ? '改名' : '起个名字'}</button></div>
-        <p class="muted">${esc(p.stageName)}${p.wilted ? ` · ${p.idle} 天没人照顾，有点蔫了` : ''}</p>
-      </div>
-      <div class="plant-side">
-        <div class="stat-big"><b>${p.points}</b><span>成长值${p.nextAt ? ` · 再 ${p.nextAt - p.points} 到下一阶段` : ' · 已经长到最大了'}</span></div>
-        <div class="bar-track"><div style="width:${pct}%"></div></div>
-        <ol class="stages">${p.stages.map((s, i) => `<li class="${i <= p.stage ? 'on' : ''}"><span>${esc(s.name)}</span><b>${s.at}</b></li>`).join('')}</ol>
-        <div class="water">
-          ${USERS.map((u) => `<div class="${p.wateredToday[u] ? 'ok' : ''}">${ICON.drop}<span>${nm(u)} ${p.wateredToday[u] ? '今天浇过了' : '今天还没浇'}</span></div>`).join('')}
-          <button class="btn dark" data-water ${p.wateredToday[me] ? 'disabled' : ''}>${p.wateredToday[me] ? '你今天浇过了' : '浇水'}</button>
-        </div>
-      </div>
-    </div>
-    <div class="cats two sec">
-      <div class="cat"><h4>成长值从哪来</h4><ul class="kv">${PARTS.map(([k, n]) => `<li><span>${n}</span><b>${p.parts[k]}</b></li>`).join('')}</ul></div>
-      <div class="cat"><h4>怎么让它长大</h4><ul class="kv">${RULES.map(([n, v]) => `<li><span>${n}</span><b>+${v}</b></li>`).join('')}</ul></div>
-    </div>`));
-
-  app.querySelector('[data-water]')?.addEventListener('click', async () => {
-    await post('/plant/water');
-    toast('浇好了');
-    renderPlant();
-  });
-  app.querySelector('[data-rename]').addEventListener('click', async () => {
-    const name = await dialog(`<h3>给它起个名字</h3><p>两个人看到的是同一个名字。</p>
-      <input type="text" id="plantName" maxlength="20" value="${esc(p.name)}" placeholder="比如 小番茄">
-      <div class="acts" style="margin-top:16px"><button class="btn" data-a="no">取消</button><button class="btn dark" data-a="ok">好了</button></div>`,
-    { onOk: (m) => m.querySelector('#plantName').value });
-    if (name === false) return;
-    await post('/plant/name', { name });
-    renderPlant();
   });
 }
 
@@ -889,63 +786,6 @@ async function renderManual() {
       toast(err.message);
     }
   });
-}
-
-// ---------- Year：恋爱年报 ----------
-
-let reportYear = null;
-
-async function renderYear() {
-  await Promise.all([ensureMe(), loadRecipes()]);
-  const thisYear = Number(todayStr().slice(0, 4));
-  if (!reportYear) reportYear = thisYear;
-  const d = await api(`/report?year=${reportYear}`);
-  names = d.names;
-  bar.hidden = false;
-  const years = [];
-  for (let y = 2026; y <= thisYear; y++) years.push(y);
-  const juiceTotal = d.juice.byUser.raven + d.juice.byUser.billy;
-  const maxJ = Math.max(1, d.juice.byUser.raven, d.juice.byUser.billy);
-  const wKeys = Object.keys(WEATHERS);
-  const moodRows = USERS.map((u) => {
-    const m = d.moods[u] || {};
-    const total = Object.values(m).reduce((a, b) => a + b, 0);
-    const segs = wKeys.filter((k) => m[k]).map((k) => `<span class="w${wKeys.indexOf(k)}" style="flex:${m[k]}" title="${WEATHERS[k][0]} ${m[k]} 天"></span>`).join('');
-    const top = Object.entries(m).sort((a, b) => b[1] - a[1])[0];
-    return `<div class="mood-row"><span>${nm(u)}</span><div class="stack">${segs || '<span class="empty-bar"></span>'}</div>
-      <em>${total ? `${WEATHERS[top[0]][0]}最多，${top[1]} 天` : '还没记过'}</em></div>`;
-  }).join('');
-
-  paint(win('Year', `恋爱年报 · ${reportYear} 年的我们`, `
-    ${years.length > 1 ? `<div class="seg">${years.map((y) => `<button type="button" data-y="${y}" class="${y === reportYear ? 'on' : ''}">${y}</button>`).join('')}</div>` : ''}
-    <div class="report-hero"><span>${reportYear} 年，我们在一起</span><b>${d.days}</b><span>天</span></div>
-    <div class="stats">
-      <div class="stat"><b>${juiceTotal}</b><span>杯果蔬汁</span></div>
-      <div class="stat"><b>${d.juice.litCycles}</b><span>轮两个人都喝了 · 最长连胜 ${d.juice.bestStreak}</span></div>
-      <div class="stat"><b>${d.ask.bothDays}</b><span>天两个人都答了每日一问</span></div>
-      <div class="stat"><b>${d.been.length}</b><span>个一起去过的地方</span></div>
-      <div class="stat"><b>${d.wishesDone.length}</b><span>个愿望做到了</span></div>
-      <div class="stat"><b>${d.letters}</b><span>封时光胶囊</span></div>
-      <div class="stat"><b>${d.ask.answers}</b><span>条每日一问的回答</span></div>
-      <div class="stat"><b>${d.manual}</b><span>条记进对方说明书</span></div>
-    </div>
-    <div class="cats two sec">
-      <div class="cat"><h4>谁喝得多</h4>
-        ${USERS.map((u) => `<div class="hbar"><span>${nm(u)}</span><div><i style="width:${(d.juice.byUser[u] / maxJ) * 100}%"></i></div><b>${d.juice.byUser[u]}</b></div>`).join('')}
-        <h4 class="mt">最常喝的</h4>
-        ${d.juice.top.length ? `<ul class="kv">${d.juice.top.map((t) => { const r = recipeById(t.recipe_id); return `<li><span><i class="cdot" style="--c:${r ? r.color : '#898989'}"></i>${esc(r?.name || t.recipe || '自己配的')}</span><b>${t.n} 杯</b></li>`; }).join('')}</ul>` : '<p class="none">还没喝过</p>'}
-      </div>
-      <div class="cat"><h4>心情天气</h4>${moodRows}
-        <div class="legend">${wKeys.map((k, i) => `<span><i class="w${i}"></i>${WEATHERS[k][0]}</span>`).join('')}</div>
-      </div>
-      <div class="cat"><h4>一起去过的地方</h4>${d.been.length ? `<ul class="kv">${d.been.map((p) => `<li><span>${esc(p.name)}</span><b>${fmtDay(p.day)}</b></li>`).join('')}</ul>` : '<p class="none">今年的第一站还没出发</p>'}</div>
-      <div class="cat"><h4>做到的愿望</h4>${d.wishesDone.length ? `<ul class="kv">${d.wishesDone.map((w) => `<li><span>${esc(w.text)}</span><b>${fmtDay(w.done_day)}</b></li>`).join('')}</ul>` : '<p class="none">第一件会是哪个？</p>'}</div>
-    </div>`));
-
-  app.querySelectorAll('[data-y]').forEach((b) => b.addEventListener('click', () => {
-    reportYear = Number(b.dataset.y);
-    renderYear();
-  }));
 }
 
 router();

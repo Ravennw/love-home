@@ -18,8 +18,6 @@ NAME_BILLY = "Billy"
 ANNIVERSARY = "2026-10-24"
 # 计算"今天"和果蔬汁周期用的时区
 HOME_TZ = "Asia/Shanghai"
-# 果蔬汁周期：几天内两人都喝过一次算一轮
-JUICE_CYCLE_DAYS = "3"
 
 [[d1_databases]]
 binding = "DB"
