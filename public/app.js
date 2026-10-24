@@ -479,11 +479,11 @@ async function renderAsk() {
   const theirCard = theirs === true
     ? `<div class="ans sealed">${ICON.lock}<b>${nm(other(me))} 已经答了</b><p>你答完就能看到</p></div>`
     : theirs
-      ? `<div class="ans"><span class="who">${nm(other(me))}</span><p>${esc(theirs)}</p></div>`
+      ? `<div class="ans"><span class="ans-h">${nm(other(me))}</span><p>${esc(theirs)}</p></div>`
       : `<div class="ans sealed"><b>${nm(other(me))} 还没答</b><p>答完会出现在这里</p></div>`;
   const myCard = mine && !askEditing
-    ? `<div class="ans"><span class="who">${nm(me)}<button class="mini" data-edit>改一改</button></span><p>${esc(mine)}</p></div>`
-    : `<form class="ans write" id="askForm"><span class="who">${nm(me)}</span>
+    ? `<div class="ans"><span class="ans-h">${nm(me)}<button class="mini" data-edit>改一改</button></span><p>${esc(mine)}</p></div>`
+    : `<form class="ans write" id="askForm"><span class="ans-h">${nm(me)}</span>
         <textarea name="text" maxlength="1000" rows="5" placeholder="想到什么写什么，写完才能看到 TA 的">${esc(mine || '')}</textarea>
         <div class="acts"><button class="btn dark">${mine ? '保存' : '写好了'}</button></div></form>`;
 

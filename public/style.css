@@ -389,7 +389,7 @@ textarea:focus, input[type=date]:focus { outline: 1px solid #c8c8c8; }
 .ask-q h3 { font-size: 22px; line-height: 1.4; margin-top: 4px; }
 .ans-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .ans { background: var(--soft); border-radius: 14px; padding: 16px 20px; min-height: 160px; display: flex; flex-direction: column; gap: 8px; }
-.ans .who { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+.ans-h { min-height: 28px; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
 .ans p { margin: 0; font-size: 15px; white-space: pre-wrap; }
 .ans.write textarea { background: #fff; flex: 1; }
 .ans.sealed { align-items: center; justify-content: center; text-align: center; color: var(--t3); }
