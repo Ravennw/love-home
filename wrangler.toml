@@ -11,6 +11,8 @@ routes = [
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
+# 打错或旧的路径不再是空白 404：回到首页，由前端路由接管
+not_found_handling = "single-page-application"
 
 [vars]
 NAME_RAVEN = "Raven"
