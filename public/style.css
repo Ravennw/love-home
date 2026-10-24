@@ -442,6 +442,7 @@ textarea:focus, input[type=date]:focus { outline: 1px solid #c8c8c8; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(196, 165, 116, .25); } }
 #placeForm { margin-bottom: 8px; }
 #placeForm .add { grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1.4fr) auto; }
+#placeForm .add.nodate { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; }
 .place-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
 .place-row img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--t1); background: var(--t1); flex: none; margin: 0 14px; }
@@ -515,7 +516,7 @@ textarea:focus, input[type=date]:focus { outline: 1px solid #c8c8c8; }
   .line { gap: 12px; padding: 12px; flex-wrap: wrap; }
   .line .k { width: 100%; }
   .line i { display: none; }
-  #placeForm .add { grid-template-columns: 1fr; }
+  #placeForm .add, #placeForm .add.nodate { grid-template-columns: 1fr; }
   .stages { grid-template-columns: repeat(2, 1fr); }
   .water .btn { margin-left: 0; width: 100%; }
   .ask-q { padding: 16px; }

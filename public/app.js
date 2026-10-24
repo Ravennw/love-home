@@ -603,6 +603,7 @@ async function renderPlant() {
 
 let mapTab = 'places';
 let pin = null; // 地图上刚点的位置 { lon, lat }
+let placeKind = 'been'; // 点地图会重画页面，选的「去过了 / 想去」要留住
 
 // 点阵地图：x = 经度 + 180，y = 90 - 纬度，可见 y 范围 4..150（见 worldmap.svg 的 viewBox）
 const MAP_Y0 = 4;
@@ -634,13 +635,13 @@ async function renderMap() {
     <div class="map" id="map"><img src="/worldmap.svg" alt="" draggable="false">${pins}${pending}</div>
     <form class="form" id="placeForm">
       <div class="seg small">
-        <button type="button" data-kind="been" class="on">去过了</button>
-        <button type="button" data-kind="want">想去</button>
+        <button type="button" data-kind="been" class="${placeKind === 'been' ? 'on' : ''}">去过了</button>
+        <button type="button" data-kind="want" class="${placeKind === 'want' ? 'on' : ''}">想去</button>
       </div>
-      <div class="add">
+      <div class="add${placeKind === 'want' ? ' nodate' : ''}">
         <input type="text" name="name" maxlength="40" placeholder="${pin ? '这是哪儿？比如 上海、京都' : '先在地图上点一下位置'}">
-        <input type="date" name="day" value="${todayStr()}">
-        <input type="text" name="note" maxlength="300" placeholder="一句话记下那天（选填）">
+        <input type="date" name="day" value="${todayStr()}" ${placeKind === 'want' ? 'hidden' : ''}>
+        <input type="text" name="note" maxlength="300" placeholder="${placeKind === 'want' ? '为什么想去（选填）' : '一句话记下那天（选填）'}">
         <button class="btn dark">记在地图上</button>
       </div>
       ${shotField('配一张照片（选填）')}
@@ -688,22 +689,24 @@ async function renderMap() {
       app.querySelector('#placeForm input[name=name]').focus({ preventScroll: true });
     });
     const form = app.querySelector('#placeForm');
-    let kind = 'been';
     form.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => {
-      kind = b.dataset.kind;
+      placeKind = b.dataset.kind;
       form.querySelectorAll('[data-kind]').forEach((x) => x.classList.toggle('on', x === b));
-      form.day.disabled = kind === 'want';
+      const want = placeKind === 'want';
+      form.day.hidden = want;
+      form.querySelector('.add').classList.toggle('nodate', want);
+      form.note.placeholder = want ? '为什么想去（选填）' : '一句话记下那天（选填）';
     }));
     const getPhoto = photoPicker(form.querySelector('.shot'));
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!pin) return toast('先在地图上点一下位置');
       const fd = new FormData();
-      fd.append('kind', kind);
+      fd.append('kind', placeKind);
       fd.append('name', form.name.value);
       fd.append('lon', pin.lon);
       fd.append('lat', pin.lat);
-      if (kind === 'been') fd.append('day', form.day.value);
+      if (placeKind === 'been') fd.append('day', form.day.value);
       fd.append('note', form.note.value);
       const photo = getPhoto();
       if (photo) fd.append('photo', photo, 'place.jpg');
