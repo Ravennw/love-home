@@ -444,6 +444,8 @@ async function renderHome() {
 
 // ---------- Memory：时光记忆本（记忆 · 每天一句 · 写给未来） ----------
 
+let memFormOpen = false;
+
 async function renderMemory() {
   const [data, letters] = await Promise.all([api('/memory'), api('/letters'), ensureMe()]);
   names = data.names;
@@ -465,14 +467,14 @@ async function renderMemory() {
         <button class="mini" data-delmem="${m.id}" data-name="${esc(m.title)}">删</button></div></article>`;
     body = `
       <p class="intro">值得记住的日子都放在这里：第一次见面、一起做成的事、普通但想留住的一天。</p>
-      <form class="form" id="memForm">
+      ${data.memories.length && !memFormOpen ? '<button type="button" class="add-bar" data-memopen>+ 记一段</button>' : `<form class="form" id="memForm">
         <div class="add mem-add">
           <input type="text" name="title" maxlength="60" placeholder="这段记忆叫什么，比如 第一次一起看海">
           <input type="date" name="day" value="${data.today}" max="${data.today}">
         </div>
         <textarea name="body" rows="3" maxlength="3000" placeholder="那天发生了什么（选填）"></textarea>
-        <div class="row">${shotField('配一张照片（选填）')}<button class="btn dark">记下来</button></div>
-      </form>
+        <div class="row">${shotField('配一张照片（选填）')}${data.memories.length ? '<button type="button" class="btn" data-memfold>收起</button>' : ''}<button class="btn dark">记下来</button></div>
+      </form>`}
       ${groups.size ? [...groups].map(([k, list]) => `<div class="sec"><h3>${Number(k.slice(0, 4))} 年 ${Number(k.slice(5))} 月</h3><div class="mems">${list.map(card).join('')}</div></div>`).join('')
         : '<p class="empty sec">第一段记忆会是什么？</p>'}`;
   } else if (memoryTab === 'lines') {
@@ -494,9 +496,18 @@ async function renderMemory() {
     renderMemory();
   }));
   if (memoryTab === 'memories') {
+    app.querySelector('[data-memopen]')?.addEventListener('click', async () => {
+      memFormOpen = true;
+      await renderMemory();
+      app.querySelector('#memForm [name=title]').focus({ preventScroll: true });
+    });
+    app.querySelector('[data-memfold]')?.addEventListener('click', () => {
+      memFormOpen = false;
+      renderMemory();
+    });
     const form = app.querySelector('#memForm');
-    const getPhoto = photoPicker(form.querySelector('.shot'));
-    form.addEventListener('submit', async (e) => {
+    const getPhoto = form ? photoPicker(form.querySelector('.shot')) : null;
+    form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData();
       fd.append('title', form.title.value);
@@ -506,6 +517,7 @@ async function renderMemory() {
       if (photo) fd.append('photo', photo, 'memory.jpg');
       try {
         await api('/memories', { method: 'POST', body: fd });
+        memFormOpen = false;
         toast('记下来了');
         renderMemory();
       } catch (err) {
@@ -594,7 +606,9 @@ const KIND = {
     name: '在学什么，比如 机器学习入门、法语、《置身事内》', subPh: '在哪学（选填），比如 Coursera、一本书',
     owner: true, statuses: [['doing', '在学'], ['want', '想学'], ['done', '学完了']], addStatus: 'doing',
     next: { want: ['doing', '开始学'], doing: ['done', '学完了'] }, doneAsk: ['学完了', '一句话说说学到了什么（选填）'],
-    say: '写一句', sayTitle: '写一句', sayPh: '学到哪了、有什么想法', addBtn: '加进来',
+    say: '写一句', sayTitle: '写一句', sayPh: '学到哪了、有什么想法', addBtn: '加进来', more: '加一门',
+    empty: '还没有在学的。挑一样开始，或者写你们自己的：',
+    examples: [['《置身事内》', '一本书', 'both'], ['法语 A1', '多邻国'], ['摄影入门', 'B 站课程']],
   },
   film: {
     route: 'watch', title: 'Watch', sub: '一起看电影 · 想一起看的片单，看完各写一句',
@@ -602,14 +616,18 @@ const KIND = {
     name: '片名，比如 花样年华', subPh: '年份或导演（选填）', notePh: '为什么想一起看（选填）',
     statuses: [['want', '想一起看'], ['done', '看过了']], addStatus: 'want',
     next: { want: ['done', '看过了'] }, doneAsk: ['看过了', '一句话短评（选填）'],
-    say: '写一句', sayTitle: '一句话短评', sayPh: '看完的感受', addBtn: '放进片单', pick: '今晚看什么',
+    say: '写一句', sayTitle: '一句话短评', sayPh: '看完的感受', addBtn: '放进片单', pick: '今晚看什么', more: '加一部',
+    empty: '片单还是空的。先放一部你们都想看的：',
+    examples: [['花样年华', '2000 · 王家卫'], ['爱在黎明破晓前', '1995 · 林克莱特'], ['海街日记', '2015 · 是枝裕和']],
   },
   song: {
     route: 'music', title: 'Music', sub: '一起听音乐 · 推荐给对方的歌，附一句为什么',
     intro: '推荐一首歌给对方，写一句为什么。对方听完也回一句。链接贴网易云、QQ 音乐、Spotify 都行。',
     name: '歌名', subPh: '歌手（选填）', notePh: '为什么推荐给 TA', link: true,
     statuses: null, addStatus: 'done',
-    say: '听后回一句', sayTitle: '听完想说', sayPh: '听完的感受', addBtn: '推荐给 TA',
+    say: '听后回一句', sayTitle: '听完想说', sayPh: '听完的感受', addBtn: '推荐给 TA', more: '推荐一首',
+    empty: '还没有歌。推荐第一首给 TA，比如：',
+    examples: [['First Love', '宇多田光'], ['Fly Me to the Moon', 'Frank Sinatra'], ['后来', '刘若英']],
   },
   goal: {
     route: 'grow', title: 'Grow', sub: '一起成长 · 今年想成为的样子，偶尔写一句进展',
@@ -617,10 +635,15 @@ const KIND = {
     name: '目标，比如 读完 12 本书、学会游泳', subPh: '为什么想做到（选填）',
     owner: true, statuses: [['doing', '进行中'], ['done', '做到了']], addStatus: 'doing', byOwner: true,
     next: { doing: ['done', '做到了'] }, doneAsk: ['做到了', '一句话记下这一刻（选填）'],
-    say: '写进展', sayTitle: '写一句进展', sayPh: '最近做到了哪一步', addBtn: '定下来',
+    say: '写进展', sayTitle: '写一句进展', sayPh: '最近做到了哪一步', addBtn: '定下来', more: '定一个目标',
+    empty: '今年想成为什么样子？每人写一两个就够，比如：',
+    examples: [['读完 12 本书', ''], ['学会游泳', ''], ['一起跑完一次半马', '', 'both']],
   },
 };
 let tonight = null; // 「今晚看什么」抽中的片
+// 有内容时表单收成一行，点了才展开；点空状态里的例子只填进输入框，不直接存
+let openForm = null;
+let prefill = null;
 
 async function renderItems(kind) {
   const cfg = KIND[kind];
@@ -630,17 +653,24 @@ async function renderItems(kind) {
   const items = data.items;
 
   const owners = [[me, '我'], [other(me), nm(other(me))], ['both', '我们俩']];
+  const pf = prefill || {};
   const form = `<form class="form" id="itemForm">
     <div class="add item-add${cfg.owner ? ' with-owner' : ''}">
-      ${cfg.owner ? `<select name="owner">${owners.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>` : ''}
-      <input type="text" name="title" maxlength="80" placeholder="${cfg.name}">
-      <input type="text" name="sub" maxlength="60" placeholder="${cfg.subPh}">
+      ${cfg.owner ? `<select name="owner">${owners.map(([v, l]) => `<option value="${v}" ${pf.owner === v ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
+      <input type="text" name="title" maxlength="80" placeholder="${cfg.name}" value="${esc(pf.title || '')}">
+      <input type="text" name="sub" maxlength="60" placeholder="${cfg.subPh}" value="${esc(pf.sub || '')}">
       ${cfg.link ? '<input type="text" name="link" maxlength="300" placeholder="链接（选填）">' : ''}
       ${cfg.statuses && kind === 'learn' ? `<select name="status">${cfg.statuses.map(([v, l]) => `<option value="${v}" ${v === cfg.addStatus ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
-      <button class="btn dark">${cfg.addBtn}</button>
     </div>
     ${cfg.notePh ? `<input type="text" name="note" maxlength="300" placeholder="${cfg.notePh}">` : ''}
+    <div class="acts">${items.length ? '<button type="button" class="btn" data-fold>收起</button>' : ''}<button class="btn dark">${cfg.addBtn}</button></div>
   </form>`;
+  const addBar = `<button type="button" class="add-bar" data-open>+ ${cfg.more}</button>`;
+  const emptyCard = `<div class="empty-card"><p>${cfg.empty}</p>
+    <div class="examples">${cfg.examples.map(([t, sb, o], n) => `<button type="button" class="pill-ex" data-ex="${n}">${esc(t)}${sb ? `<small>${esc(sb)}</small>` : ''}</button>`).join('')}
+      <button type="button" class="pill-ex own" data-open>自己写一个</button></div></div>`;
+  const formOpen = openForm === kind;
+  const top = !items.length ? (formOpen ? form : emptyCard) : formOpen ? form : addBar;
 
   const card = (i) => {
     const next = cfg.next?.[i.status];
@@ -665,27 +695,48 @@ async function renderItems(kind) {
   };
 
   let lists = '';
-  if (cfg.byOwner) {
+  if (!items.length) {
+    lists = '';
+  } else if (cfg.byOwner) {
     // 成长：按人分三栏
     lists = `<div class="cols3">${[me, other(me), 'both'].map((o) => {
       const mine = items.filter((i) => i.owner === o);
       return `<div class="col"><h3>${o === 'both' ? '我们俩' : nm(o)} · ${mine.filter((i) => i.status !== 'done').length}</h3>
-        ${mine.map(card).join('') || '<p class="empty">还没有</p>'}</div>`;
+        ${mine.map(card).join('') || '<p class="muted">还没有</p>'}</div>`;
     }).join('')}</div>`;
   } else if (cfg.statuses) {
     lists = cfg.statuses.map(([s, label]) => {
       const list = items.filter((i) => i.status === s);
-      if (!list.length && s === 'want' && kind === 'learn') return '';
-      return `<div class="sec"><h3>${label} · ${list.length}</h3>${list.map(card).join('') || '<p class="empty">还没有</p>'}</div>`;
+      if (!list.length) return '';
+      return `<div class="sec"><h3>${label} · ${list.length}</h3>${list.map(card).join('')}</div>`;
     }).join('');
   } else {
-    lists = `<div class="sec">${items.map(card).join('') || '<p class="empty">推荐第一首吧</p>'}</div>`;
+    lists = `<div class="sec">${items.map(card).join('')}</div>`;
   }
 
-  paint(win(cfg.title, cfg.sub, `<p class="intro">${cfg.intro}</p>${form}${lists}`,
-    cfg.pick ? `<button class="btn" data-pickone>${cfg.pick}</button>` : ''));
+  const canPick = cfg.pick && items.some((i) => i.status === 'want');
+  paint(win(cfg.title, cfg.sub, `<p class="intro">${cfg.intro}</p>${top}${lists}`,
+    canPick ? `<button class="btn" data-pickone>${cfg.pick}</button>` : ''));
 
-  app.querySelector('#itemForm').addEventListener('submit', async (e) => {
+  const reopen = async (fill) => {
+    openForm = kind;
+    prefill = fill;
+    await renderItems(kind);
+    const input = app.querySelector('#itemForm [name=title]');
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+  };
+  app.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => reopen(null)));
+  app.querySelectorAll('[data-ex]').forEach((b) => b.addEventListener('click', () => {
+    const [title, sub, owner] = cfg.examples[Number(b.dataset.ex)];
+    reopen({ title, sub, owner });
+  }));
+  app.querySelector('[data-fold]')?.addEventListener('click', () => {
+    openForm = null;
+    prefill = null;
+    renderItems(kind);
+  });
+  app.querySelector('#itemForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
     try {
@@ -699,6 +750,8 @@ async function renderItems(kind) {
         note: f.note?.value,
       });
       toast('加进来了');
+      openForm = null;
+      prefill = null;
       renderItems(kind);
     } catch (err) {
       toast(err.message);
@@ -958,9 +1011,8 @@ async function renderMap() {
         <input type="text" name="name" maxlength="40" placeholder="${pin ? '这是哪儿？比如 上海、京都' : '先在地图上点一下位置'}">
         <input type="date" name="day" value="${todayStr()}" ${placeKind === 'want' ? 'hidden' : ''}>
         <input type="text" name="note" maxlength="300" placeholder="${placeKind === 'want' ? '为什么想去（选填）' : '一句话记下那天（选填）'}">
-        <button class="btn dark">记在地图上</button>
       </div>
-      ${shotField('配一张照片（选填）')}
+      <div class="row">${shotField('配一张照片（选填）')}<button class="btn dark">记在地图上</button></div>
     </form>
     <div class="cats two sec">
       <div class="cat"><h4>去过的<span>${been.length} 个地方</span></h4>${been.map(placeRow).join('') || '<p class="none">还没有，第一站会是哪里？</p>'}</div>
@@ -1076,4 +1128,5 @@ function showPlace(p) {
     <p class="muted">${nm(p.author)} 记的</p>`, { wide: Boolean(p.photo_key) });
 }
 
-router();
+// 先确认登录状态再进页面；没登录直接显示登录页
+api('/session').then(({ me: who }) => (who ? router() : renderLogin())).catch(() => renderLogin());

@@ -38,6 +38,8 @@ async function route(request, env, url) {
   const id = Number(seg[3]);
 
   if (pathname === '/api/login' && method === 'POST') return login(request, env);
+  // 打开网站先问一下登没登录：没登录返回 me: null（200），不用拿 401 当信号，控制台不报红
+  if (pathname === '/api/session' && method === 'GET') return json({ me: await currentUser(request, env) });
   if (pathname === '/api/logout' && method === 'POST') {
     return json({ ok: true }, 200, { 'Set-Cookie': cookie('', 0) });
   }

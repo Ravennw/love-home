@@ -350,8 +350,8 @@ button.line { border: 0; width: 100%; text-align: left; cursor: pointer; }
 .pin:hover span { opacity: 1; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(196, 165, 116, .25); } }
 #placeForm { margin-bottom: 8px; }
-#placeForm .add { grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1.4fr) auto; }
-#placeForm .add.nodate { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; }
+#placeForm .add { grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1.4fr); }
+#placeForm .add.nodate { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
 .place-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
 .place-row img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--t1); background: var(--t1); flex: none; margin: 0 14px; }
@@ -465,11 +465,12 @@ button.line { border: 0; width: 100%; text-align: left; cursor: pointer; }
 .dlg-img.full { max-height: 75vh; object-fit: contain; background: #111; }
 
 /* 学习 / 电影 / 音乐 / 成长 */
-#itemForm { gap: 8px; margin-bottom: 8px; }
-.item-add { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; }
-.item-add.with-owner { grid-template-columns: 110px minmax(0, 1.4fr) minmax(0, 1fr) auto; }
-#itemForm .item-add:has(input[name=link]) { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1fr) auto; }
-#itemForm .item-add:has(select[name=status]) { grid-template-columns: 110px minmax(0, 1.4fr) minmax(0, 1fr) 100px auto; }
+#itemForm { gap: 8px; }
+.item-add { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.item-add.with-owner { grid-template-columns: 110px minmax(0, 1.4fr) minmax(0, 1fr); }
+#itemForm .item-add:has(input[name=link]) { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1fr); }
+#itemForm .item-add:has(select[name=status]) { grid-template-columns: 110px minmax(0, 1.4fr) minmax(0, 1fr) 100px; }
+#itemForm { margin-bottom: 16px; }
 .it { background: var(--soft); border-radius: 14px; padding: 14px 20px; margin-bottom: 8px; transition: box-shadow .2s; }
 .it.pick { box-shadow: 0 0 0 2px #c4a574; }
 .it-h { display: flex; align-items: center; gap: 12px; }
@@ -513,3 +514,31 @@ a.ext:hover { color: var(--t1); }
   .dl { grid-template-columns: 1fr; gap: 2px; }
   .note-meta span { white-space: normal; }
 }
+
+/* 10-25 清单页：内容在前，添加收成一行；全空时给一张带例子的引导卡（例子只填进输入框） */
+.add-bar {
+  width: 100%; border: 0; border-radius: 14px; background: var(--paper); color: var(--t2); height: 48px;
+  font-size: 14px; text-align: left; padding: 0 20px; cursor: pointer; transition: background .2s, color .2s; margin-bottom: 8px;
+}
+.add-bar:hover { background: #f3efe7; color: var(--t1); }
+.empty-card { background: var(--paper); border-radius: 14px; padding: 24px; }
+.empty-card p { margin: 0 0 14px; font-size: 15px; color: var(--t2); }
+.examples { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill-ex {
+  border: 0; background: #fff; border-radius: 999px; height: 36px; padding: 0 16px; font-size: 14px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; transition: background .2s;
+}
+.pill-ex small { font-size: 12px; color: var(--t3); }
+.pill-ex:hover { background: var(--btn-h); }
+.pill-ex.own { background: var(--t1); color: #fff; }
+.pill-ex.own:hover { background: #2a2a2a; }
+@media (max-width: 760px) {
+  /* 页眉条只放标题，说明写在下面的 intro 里，避免被截掉 */
+  .win-h span { display: none; }
+  .win-h { min-height: 48px; }
+  .pill-ex { height: 40px; }
+  .empty-card { padding: 16px; }
+}
+#placeForm .row, #memForm .row { align-items: center; }
+#placeForm .shot, #memForm .shot { flex: 1; min-width: 0; }
+#placeForm { gap: 12px; }
