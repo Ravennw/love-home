@@ -109,11 +109,16 @@ function dialog(inner, { wide = false, onOk } = {}) {
 const confirmBox = (title, text, okLabel) => dialog(`<h3>${esc(title)}</h3><p>${esc(text)}</p>
   <div class="acts"><button class="btn" data-a="no">取消</button><button class="btn dark" data-a="ok">${esc(okLabel)}</button></div>`);
 
-// 整块重画时保住滚动位置，点了东西不跳到顶部
+// 整块重画时保住滚动位置，点了东西不跳到顶部；内页在白框 .win-b 里滚，换页才回顶
+let freshRoute = true;
 function paint(html) {
   const y = scrollY;
+  const inner = freshRoute ? 0 : app.querySelector('.win-b')?.scrollTop || 0;
+  freshRoute = false;
   app.innerHTML = html;
   scrollTo(0, y);
+  const box = app.querySelector('.win-b');
+  if (box) box.scrollTop = inner;
 }
 
 // 内页窗口：白底 + 48 高黑色页眉条，right 是页眉条右边的按钮
@@ -176,7 +181,10 @@ async function router() {
   document.querySelectorAll('[data-tab]').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   pickBtn.querySelector('span').textContent = TABS[tab][0];
   menu.hidden = true;
-  if (lastRoute !== tab) scrollTo(0, 0);
+  if (lastRoute !== tab) {
+    scrollTo(0, 0);
+    freshRoute = true;
+  }
   lastRoute = tab;
   try {
     await (routes[name] || renderHome)();

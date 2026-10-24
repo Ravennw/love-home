@@ -117,12 +117,16 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.35; }
 .dots span.ok { background: var(--t1); color: #fff; }
 
 /* ---------- 内页窗口：白底，黑色页眉条 48 ---------- */
-.win { max-width: 1180px; margin: 88px auto 40px; background: #fff; border-radius: 28px; overflow: hidden; }
-.win-h { height: 48px; background: #0a0a0a; display: flex; align-items: center; gap: 12px; padding: 0 40px; }
+/* 白框固定在导航下面，整页不滚，只在框里滚（同主站 box.css），页眉条始终在框顶 */
+.win {
+  position: fixed; top: 88px; bottom: 24px; left: 24px; right: 24px; max-width: 1180px; margin: 0 auto;
+  background: #fff; border-radius: 28px; overflow: hidden; display: flex; flex-direction: column;
+}
+.win-h { flex: none; height: 48px; background: #0a0a0a; display: flex; align-items: center; gap: 12px; padding: 0 40px; }
 .win-h h2 { font-size: 17px; font-weight: 600; color: #fff; }
 .win-h span { font-size: 13px; color: var(--t3); }
 .win-h .btn { margin-left: auto; background: #fff; color: var(--t1); }
-.win-b { padding: 16px 40px 40px; }
+.win-b { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 40px 40px; }
 .sec { margin-top: 36px; }
 .sec > h3 { font-size: 17px; margin-bottom: 14px; }
 .intro { font-size: 14px; color: var(--t2); margin: 0 0 16px; }
@@ -276,7 +280,7 @@ body.locked { overflow: hidden; }
   .moods { grid-template-columns: 1fr; }
   .juice-line { flex-wrap: wrap; }
 
-  .win { margin: 72px 8px 24px; border-radius: 22px; }
+  .win { top: 72px; bottom: calc(8px + env(safe-area-inset-bottom)); left: 8px; right: 8px; border-radius: 22px; }
   .win-h { height: auto; min-height: 48px; padding: 12px 16px; flex-wrap: wrap; gap: 2px 12px; }
   .win-h span { line-height: 1.4; }
   .win-b { padding: 16px 16px 32px; }
