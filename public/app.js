@@ -364,7 +364,8 @@ async function renderHome() {
       t.song ? `${nm(t.song.author)} 最近推荐${t.song.sub ? ` · ${esc(t.song.sub)}` : ''}` : '推荐一首给对方'),
     tile('#/grow', '一起成长', t.goals.length ? esc(t.goals[0].title) : '还没定目标',
       t.goals.length ? `${t.goals.length} 个目标在进行` : '写下今年想成为的样子'),
-    tile('#/health', '健康', `${nm(them)} ${drinkText(j[them])}`, `你${drinkText(j[me])}`),
+    tile('#/health', '健康', j[them] ? `${nm(them)} ${ago(j[them].day)}喝了` : `${nm(them)} 还没喝过`,
+      [j[them]?.recipe ? esc(j[them].recipe) : '', j[me] ? `你${ago(j[me].day)}喝了` : '你还没喝过'].filter(Boolean).join(' · ')),
   ].join('');
 
   paint(`
@@ -385,6 +386,7 @@ async function renderHome() {
           <div class="well">
             <div class="clocks">${clock(me)}${clock(them)}</div>
             ${meetLine}
+            <div class="note-meta"><span>点自己的时钟可以改城市，点下次见面可以改日子</span></div>
           </div>
         </div>
         <div class="box wide">
@@ -468,6 +470,7 @@ async function renderMemory() {
     body = `
       <p class="intro">值得记住的日子都放在这里：第一次见面、一起做成的事、普通但想留住的一天。</p>
       ${data.memories.length && !memFormOpen ? '<button type="button" class="add-bar" data-memopen>+ 记一段</button>' : `<form class="form" id="memForm">
+        ${data.memories.length ? '' : '<p class="form-tip">第一段记忆会是什么？第一次见面、第一次一起做成的事，都可以。</p>'}
         <div class="add mem-add">
           <input type="text" name="title" maxlength="60" placeholder="这段记忆叫什么，比如 第一次一起看海">
           <input type="date" name="day" value="${data.today}" max="${data.today}">
@@ -476,7 +479,7 @@ async function renderMemory() {
         <div class="row">${shotField('配一张照片（选填）')}${data.memories.length ? '<button type="button" class="btn" data-memfold>收起</button>' : ''}<button class="btn dark">记下来</button></div>
       </form>`}
       ${groups.size ? [...groups].map(([k, list]) => `<div class="sec"><h3>${Number(k.slice(0, 4))} 年 ${Number(k.slice(5))} 月</h3><div class="mems">${list.map(card).join('')}</div></div>`).join('')
-        : '<p class="empty sec">第一段记忆会是什么？</p>'}`;
+        : ''}`;
   } else if (memoryTab === 'lines') {
     body = `
       <p class="intro">每天一句话，攒起来就是我们的日子。在首页写，这里只看。</p>
@@ -686,9 +689,9 @@ async function renderItems(kind) {
         <div class="it-acts">
           ${next ? `<button class="mini dark" data-next="${i.id}" data-to="${next[0]}">${next[1]}</button>` : ''}
           <button class="mini" data-say="${i.id}">${cfg.say}</button>
-          <button class="mini" data-del="${i.id}" data-name="${esc(i.title)}">删</button>
         </div>
       </div>
+      <button class="it-del" data-del="${i.id}" data-name="${esc(i.title)}" aria-label="删掉这一条">${ICON.x}</button>
       ${i.comments.length ? `<ul class="cmts">${i.comments.map((c) => `<li><b>${nm(c.user)}</b><p>${esc(c.text)}</p><span>${fmtDay(c.day)}</span>
         ${c.user === me ? `<button class="x" data-delc="${c.id}" aria-label="删掉这句">${ICON.x}</button>` : ''}</li>`).join('')}</ul>` : ''}
     </article>`;
