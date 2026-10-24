@@ -1,0 +1,14 @@
+{
+  "name": "love-home",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:local": "wrangler d1 execute love-home --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute love-home --remote --file=schema.sql",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

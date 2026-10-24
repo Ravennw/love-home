@@ -1,0 +1,32 @@
+name = "love-home"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+# 部署时绑定子域名（ravenweng.com 已在 Cloudflare 上）
+routes = [
+  { pattern = "home.ravenweng.com", custom_domain = true }
+]
+
+# 静态页面放在 public/，/api/* 交给 Worker
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[vars]
+NAME_RAVEN = "Raven"
+NAME_BILLY = "Billy"
+ANNIVERSARY = "2026-10-24"
+# 计算"今天"和果蔬汁周期用的时区
+HOME_TZ = "Asia/Shanghai"
+# 果蔬汁周期：几天内两人都喝过一次算一轮
+JUICE_CYCLE_DAYS = "3"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "love-home"
+database_id = "ec10154b-39d4-4f2e-be4c-1e3cec9b5ed8"
+
+# 打卡照片（前端已压缩到长边 1280）
+[[kv_namespaces]]
+binding = "PHOTOS"
+id = "7ca2a42df3fe4981b5ae321473278cd1"

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="robots" content="noindex">
+  <title>Raven & Billy</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preload" href="/fonts/instrument-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/style.css?v=3">
+</head>
+<body>
+  <header class="bar" id="bar" hidden>
+    <a class="brand" href="#/">RAVEN &amp; BILLY</a>
+    <nav class="tabs">
+      <a href="#/" data-tab="home">HOME</a>
+      <a href="#/juice" data-tab="juice">JUICE</a>
+      <a href="#/manual" data-tab="manual">MANUAL</a>
+    </nav>
+    <button class="pick" id="pick" type="button" aria-haspopup="true"><span></span><svg viewBox="0 0 12 12" width="12" height="12"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <div class="menu" id="menu" hidden>
+      <a href="#/" data-tab="home">Home</a>
+      <a href="#/juice" data-tab="juice">Juice</a>
+      <a href="#/manual" data-tab="manual">Manual</a>
+    </div>
+    <button class="out" id="logout" type="button" title="退出">退出</button>
+  </header>
+  <main id="app"></main>
+  <div id="toast"></div>
+  <script src="/flow.js?v=3"></script>
+  <script src="/app.js?v=3" type="module"></script>
+</body>
+</html>
