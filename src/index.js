@@ -8,6 +8,7 @@ const KINDS = ['learn', 'film', 'song', 'goal'];
 const STATUSES = ['want', 'doing', 'done'];
 const OWNERS = ['raven', 'billy', 'both'];
 const SESSION_DAYS = 60;
+const RENEW_DAYS = 30; // 剩不到 30 天时，这次请求顺手续成新的 60 天：60 天里打开过一次就不会被登出
 const DAY_MS = 86400000;
 
 export default {
@@ -38,15 +39,19 @@ async function route(request, env, url) {
   const id = Number(seg[3]);
 
   if (pathname === '/api/login' && method === 'POST') return login(request, env);
-  // 打开网站先问一下登没登录：没登录返回 me: null（200），不用拿 401 当信号，控制台不报红
-  if (pathname === '/api/session' && method === 'GET') return json({ me: await currentUser(request, env) });
   if (pathname === '/api/logout' && method === 'POST') {
     return json({ ok: true }, 200, { 'Set-Cookie': cookie('', 0) });
   }
+  const s = await session(request, env);
+  // 打开网站先问一下登没登录：没登录返回 me: null（200），不用拿 401 当信号，控制台不报红
+  if (pathname === '/api/session' && method === 'GET') return renew(json({ me: s?.user ?? null }), s, env);
+  if (!s) throw new HttpError(401, '请先登录');
+  return renew(await dispatch(request, env, url, s.user, seg, id), s, env);
+}
 
-  const me = await currentUser(request, env);
-  if (!me) throw new HttpError(401, '请先登录');
-
+async function dispatch(request, env, url, me, seg, id) {
+  const { pathname } = url;
+  const method = request.method;
   if (method === 'GET' && seg[2] === 'photo') {
     return photo(env, decodeURIComponent(pathname.slice('/api/photo/'.length)));
   }
@@ -98,18 +103,29 @@ async function login(request, env) {
   if (!expected || !(await safeEqual(password || '', expected))) {
     throw new HttpError(401, '密码不对');
   }
-  const exp = Date.now() + SESSION_DAYS * DAY_MS;
-  const payload = `${user}.${exp}`;
-  const token = `${payload}.${await sign(payload, env.SESSION_SECRET)}`;
-  return json({ ok: true, user }, 200, { 'Set-Cookie': cookie(token, SESSION_DAYS * 86400) });
+  return json({ ok: true, user }, 200, { 'Set-Cookie': await issue(user, env) });
 }
 
-async function currentUser(request, env) {
+// 签发一个新的 60 天登录 cookie
+async function issue(user, env) {
+  const exp = Date.now() + SESSION_DAYS * DAY_MS;
+  const payload = `${user}.${exp}`;
+  return cookie(`${payload}.${await sign(payload, env.SESSION_SECRET)}`, SESSION_DAYS * 86400);
+}
+
+// 校验 cookie，返回 { user, exp }；无效或过期返回 null
+async function session(request, env) {
   const match = (request.headers.get('Cookie') || '').match(/(?:^|;\s*)sid=([^;]+)/);
   if (!match) return null;
   const [user, exp, sig] = match[1].split('.');
   if (!USERS.includes(user) || Number(exp) < Date.now()) return null;
-  return (await safeEqual(sig, await sign(`${user}.${exp}`, env.SESSION_SECRET))) ? user : null;
+  return (await safeEqual(sig || '', await sign(`${user}.${exp}`, env.SESSION_SECRET))) ? { user, exp: Number(exp) } : null;
+}
+
+// 滑动续期：剩不到 RENEW_DAYS 天就在这次响应里补发新的 60 天 cookie
+async function renew(res, s, env) {
+  if (s && s.exp - Date.now() < RENEW_DAYS * DAY_MS) res.headers.append('Set-Cookie', await issue(s.user, env));
+  return res;
 }
 
 function cookie(value, maxAge) {
