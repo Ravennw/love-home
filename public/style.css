@@ -553,3 +553,6 @@ a.ext:hover { color: var(--t1); }
 .it-del:hover { background: var(--btn-h); color: var(--t1); }
 .it-del svg { width: 12px; height: 12px; }
 .form-tip { margin: 0; font-size: 15px; color: var(--t2); }
+
+/* 纪念日当天：胭脂色小标签（取自果蔬汁配方色），白字对比度足够 */
+.hero .tag .mark { font-style: normal; background: #9d2933; color: #fff; border-radius: 999px; padding: 2px 12px; }

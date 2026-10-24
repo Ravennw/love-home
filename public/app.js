@@ -311,6 +311,25 @@ function drinkText(d) {
 
 // ---------- Home ----------
 
+// 纪念日里程碑：按在一起的日子自动算，不用谁去输入。第 N 天（100、200、300、520、1000、1314）和每年的周年
+const DAY_MARKS = [100, 200, 300, 520, 1000, 1314];
+const dayNum = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86400000;
+function milestone(anniversary, today, daysTogether) {
+  if (DAY_MARKS.includes(daysTogether)) return { today: `今天是我们在一起的第 ${daysTogether} 天` };
+  const [ay, md] = [+anniversary.slice(0, 4), anniversary.slice(4)];
+  const ty = +today.slice(0, 4);
+  if (today.slice(4) === md && ty > ay) return { today: `今天是我们的 ${ty - ay} 周年` };
+  // 下一个周年：今年的还没到就是今年，否则明年（2 月 29 日按 3 月 1 日算）
+  let y = today.slice(4) < md ? ty : ty + 1;
+  if (y === ay) y += 1;
+  const annivDay = dayNum(`${y}${md === '-02-29' ? '-03-01' : md}`);
+  const options = [{ left: annivDay - dayNum(today), label: `${y - ay} 周年` }];
+  const nextMark = DAY_MARKS.find((m) => m > daysTogether);
+  if (nextMark) options.push({ left: nextMark - daysTogether, label: `第 ${nextMark} 天` });
+  const next = options.sort((a, b) => a.left - b.left)[0];
+  return { next: `再过 ${next.left} 天是${/^\d/.test(next.label) ? ' ' : ''}${next.label}` };
+}
+
 let lineEditing = false;
 
 async function renderHome() {
@@ -378,7 +397,12 @@ async function renderHome() {
   paint(`
     <section class="hero">
       <h1>Raven &amp; Billy</h1>
-      <p class="tag">${data.daysTogether === 1 ? 'Day 1 · 今天，我们在一起了' : `Day ${data.daysTogether} · 在一起的第 ${data.daysTogether} 天`}</p>
+      <p class="tag">${(() => {
+        if (data.daysTogether === 1) return 'Day 1 · 今天，我们在一起了';
+        const m = milestone(data.anniversary, data.today, data.daysTogether);
+        return m.today ? `Day ${data.daysTogether} · <em class="mark">${m.today}</em>`
+          : `Day ${data.daysTogether} · 在一起的第 ${data.daysTogether} 天 · ${m.next}`;
+      })()}</p>
       <div class="dash">
         <div class="box">
           <div class="box-h"><i></i>Today<span>每天一句话</span></div>
