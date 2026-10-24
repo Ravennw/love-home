@@ -61,6 +61,9 @@ async function route(request, env, url) {
     case 'GET /shop': return json({ picks: await getState(env, 'shop', []) });
     case 'POST /shop': return setShop(request, env);
     case 'POST /meet': return setMeet(request, env);
+    case 'POST /notes': return addNote(request, env, me);
+    case 'GET /notes': return json({ items: await listNotes(env, 100), names: names(env) });
+    case 'POST /where': return setWhere(request, env, me);
     case 'GET /ask': return getAsk(env, me);
     case 'POST /ask': return answer(request, env, me);
     case 'GET /places': return listPlaces(env);
@@ -147,7 +150,7 @@ function isDay(s) {
 
 async function home(env, me) {
   const day = today(env);
-  const [{ results: moods }, juice, ask, meet] = await Promise.all([
+  const [{ results: moods }, juice, ask, meet, notes, where] = await Promise.all([
     env.DB.prepare(
       `SELECT m.user, m.day, m.weather, m.note FROM moods m
        JOIN (SELECT user, MAX(day) AS day FROM moods GROUP BY user) last
@@ -156,7 +159,11 @@ async function home(env, me) {
     lastDrinks(env),
     askStatus(env, day, me),
     getState(env, 'meet', null),
+    listNotes(env, 40),
+    getState(env, 'where', {}),
   ]);
+  // 打开首页就算看过了对方留的纸条：记下这次打开的时间；这次返回的仍是之前的已读状态，界面能标「新」
+  await setState(env, `seen:${me}`, Date.now());
   return json({
     me,
     names: names(env),
@@ -167,7 +174,46 @@ async function home(env, me) {
     juice,
     ask,
     meet: meet && meet.day >= day ? { ...meet, daysLeft: daysBetween(day, meet.day) } : null,
+    notes,
+    where,
   });
+}
+
+// 纸条：text 为空就是一下「想你了」。每张单独一行（state 里 key 为 note:时间），两人同时发也不会互相覆盖；
+// 已读不逐条存，看收件人最后一次打开首页的时间（seen:用户）
+async function addNote(request, env, me) {
+  const { text } = await request.json();
+  const at = Date.now();
+  await setState(env, `note:${String(at).padStart(15, '0')}-${crypto.randomUUID().slice(0, 8)}`, { from: me, text: clip(text, 200) || '', at });
+  return json({ ok: true });
+}
+
+async function listNotes(env, limit) {
+  const [{ results }, seen] = await Promise.all([
+    env.DB.prepare("SELECT key, value FROM state WHERE key LIKE 'note:%' ORDER BY key DESC LIMIT ?").bind(limit).all(),
+    Promise.all(USERS.map((u) => getState(env, `seen:${u}`, 0))),
+  ]);
+  const seenBy = Object.fromEntries(USERS.map((u, i) => [u, seen[i]]));
+  return results.map((r) => {
+    const n = JSON.parse(r.value);
+    const to = USERS.find((u) => u !== n.from);
+    return { id: r.key, ...n, read: seenBy[to] >= n.at };
+  });
+}
+
+// 各自在哪个城市，用来显示对方那边现在几点
+async function setWhere(request, env, me) {
+  const { city, tz } = await request.json();
+  if (typeof tz !== 'string' || !tz) throw new HttpError(400, '时区不对');
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+  } catch {
+    throw new HttpError(400, '时区不对');
+  }
+  const where = await getState(env, 'where', {});
+  where[me] = { city: clip(city, 20) || '', tz };
+  await setState(env, 'where', where);
+  return json({ ok: true });
 }
 
 // 下次见面：两个人共用一个日期和地点，清空就传空日期

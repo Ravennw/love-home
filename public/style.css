@@ -107,6 +107,28 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.35; }
 .mood small { font-size: 12px; color: var(--t3); }
 .mood-note { margin-top: 12px; }
 
+/* 此刻：两边的当地时间 + 纸条 */
+.clocks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.clock { border: 0; background: #fff; border-radius: 6px; padding: 12px 16px; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+button.clock { cursor: pointer; transition: background .2s; }
+button.clock:hover { background: #fbfaf8; }
+.clock .c-who { font-size: 13px; color: var(--t2); }
+.clock b { font: 600 26px/1.2 var(--f-disp); }
+.clock.empty b { color: #c8c8c8; }
+.clock .c-part { font-size: 12px; color: var(--t3); }
+.note-card { background: #fff; border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }
+.note-card span { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--t3); }
+.note-card em { font-style: normal; font-size: 12px; background: var(--t1); color: #fff; border-radius: 999px; padding: 0 8px; }
+.note-card p { margin: 2px 0 0; font-size: 15px; word-break: break-word; }
+.note-card.none p { font-size: 13px; color: var(--t3); margin: 0; }
+.note-meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--t3); }
+.linkbtn { border: 0; background: none; padding: 0; font-size: 12px; color: var(--t2); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; flex: none; }
+.note-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.note-list li { background: var(--soft); border-radius: 6px; padding: 8px 12px; margin-right: 48px; }
+.note-list li.me { background: var(--warm); margin: 0 0 0 48px; }
+.note-list span { font-size: 12px; color: var(--t3); }
+.note-list p, .dialog .note-list p { margin: 0; font-size: 14px; color: var(--t1); word-break: break-word; }
+
 /* 首页果蔬汁条 */
 .juice-line { display: flex; align-items: center; gap: 16px; text-decoration: none; }
 .juice-line .num { font: 600 26px/1 var(--f-disp); }
@@ -249,6 +271,9 @@ body.locked { overflow: hidden; }
   .hero h1 { font-size: 52px; margin-top: 8vh; }
   .hero .tag { font-size: 15px; margin-bottom: 24px; }
   .moods { grid-template-columns: 1fr; }
+  .note-form { flex-wrap: wrap; }
+  .note-form input { flex: 1 1 100%; }
+  .note-form .btn { flex: 1; }
   .juice-line { flex-wrap: wrap; }
 
   .win { top: 72px; bottom: calc(8px + env(safe-area-inset-bottom)); left: 8px; right: 8px; border-radius: 22px; }

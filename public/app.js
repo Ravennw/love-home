@@ -258,6 +258,37 @@ function renderLogin() {
 
 // ---------- Home ----------
 
+// ---------- 此刻：两个人的当地时间 + 纸条 ----------
+
+const CITIES = [
+  ['上海', 'Asia/Shanghai'], ['北京', 'Asia/Shanghai'], ['香港', 'Asia/Hong_Kong'], ['台北', 'Asia/Taipei'],
+  ['东京', 'Asia/Tokyo'], ['首尔', 'Asia/Seoul'], ['新加坡', 'Asia/Singapore'], ['迪拜', 'Asia/Dubai'],
+  ['悉尼', 'Australia/Sydney'], ['墨尔本', 'Australia/Melbourne'], ['奥克兰', 'Pacific/Auckland'],
+  ['伦敦', 'Europe/London'], ['巴黎', 'Europe/Paris'], ['柏林', 'Europe/Berlin'], ['阿姆斯特丹', 'Europe/Amsterdam'],
+  ['纽约', 'America/New_York'], ['多伦多', 'America/Toronto'], ['芝加哥', 'America/Chicago'],
+  ['洛杉矶', 'America/Los_Angeles'], ['旧金山', 'America/Los_Angeles'], ['西雅图', 'America/Los_Angeles'], ['温哥华', 'America/Vancouver'],
+];
+const hhmm = (tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+function dayPart(tz) {
+  const h = Number(hhmm(tz).slice(0, 2));
+  return h < 5 ? '深夜' : h < 8 ? '清晨' : h < 11 ? '上午' : h < 13 ? '中午' : h < 18 ? '下午' : h < 23 ? '晚上' : '深夜';
+}
+// 相对 UTC 的分钟数，用来算两边差几个小时
+function offsetMin(tz) {
+  const s = new Intl.DateTimeFormat('en', { timeZone: tz, timeZoneName: 'longOffset' }).format(new Date());
+  const m = s.match(/GMT([+-])(\d{2}):(\d{2})/);
+  return m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0;
+}
+function ago2(ms) {
+  const min = Math.floor((Date.now() - ms) / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min} 分钟前`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)} 小时前`;
+  return fmtDay(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date(ms)));
+}
+const noteText = (n) => (n.text ? esc(n.text) : n.from === me ? `想 ${nm(other(me))} 了` : `${nm(n.from)} 想你了`);
+let clockTimer = null;
+
 // 果蔬汁不算轮次：只说两个人最近一次喝是哪天，看得到对方就够了
 function drinkText(d) {
   return d ? `${ago(d.day)}喝了${d.recipe ? ` ${esc(d.recipe)}` : ''}` : '还没喝过';
@@ -290,6 +321,34 @@ async function renderHome() {
   const line = (href, k, v, hint, done) => `<a class="line" href="${href}">
     <span class="k">${k}</span><div class="v"><b>${v}</b><p>${hint}</p></div>${done ? dots(done) : ''}<i>${ICON.arrow}</i></a>`;
   const drankToday = Object.fromEntries(USERS.map((u) => [u, j[u]?.day === data.today]));
+  const where = data.where || {};
+  const them = other(me);
+  const clock = (u) => {
+    const w = where[u];
+    const tag = u === me ? 'button type="button" data-where' : 'div';
+    const end = u === me ? 'button' : 'div';
+    if (!w) {
+      return `<${tag} class="clock empty"><span class="c-who">${nm(u)}</span><b>--:--</b>
+        <span class="c-part">${u === me ? '点这里设你在哪个城市' : `等 ${nm(u)} 设一下城市`}</span></${end}>`;
+    }
+    let hint = dayPart(w.tz);
+    if (u !== me) {
+      if (hint === '深夜') hint += '，可能睡了';
+      else if (hint === '清晨') hint += '，可能刚醒';
+      if (where[me]) {
+        const d = (offsetMin(w.tz) - offsetMin(where[me].tz)) / 60;
+        if (d) hint += ` · 比你${d > 0 ? '快' : '慢'} ${Math.abs(d)} 小时`;
+      }
+    }
+    return `<${tag} class="clock"><span class="c-who">${nm(u)}${w.city ? ` · ${esc(w.city)}` : ''}</span>
+      <b data-tz="${esc(w.tz)}">${hhmm(w.tz)}</b><span class="c-part">${hint}</span></${end}>`;
+  };
+  const notes = data.notes || [];
+  const got = notes.find((n) => n.from === them);
+  const sent = notes.find((n) => n.from === me);
+  const noteCard = got
+    ? `<div class="note-card${got.read ? '' : ' new'}"><span>${nm(them)} · ${ago2(got.at)}${got.read ? '' : '<em>新</em>'}</span><p>${noteText(got)}</p></div>`
+    : `<div class="note-card none"><p>${nm(them)} 还没留过纸条</p></div>`;
   const meetLine = `<button type="button" class="line" data-meet>
     <span class="k">下次见面</span>
     <div class="v">${meet
@@ -301,6 +360,21 @@ async function renderHome() {
     <section class="hero">
       <h1>Raven &amp; Billy</h1>
       <p class="tag">${data.daysTogether === 1 ? 'Day 1 · 今天，我们在一起了' : `Day ${data.daysTogether} · 在一起的第 ${data.daysTogether} 天`}</p>
+
+      <div class="box">
+        <div class="box-h"><i></i>Right now<span>此刻的我们</span></div>
+        <div class="well">
+          <div class="clocks">${clock(me)}${clock(them)}</div>
+          ${noteCard}
+          <form class="row note-form" id="noteForm">
+            <input type="text" name="text" maxlength="200" placeholder="给 ${nm(them)} 留一张纸条">
+            <button type="button" class="btn" data-miss>想你了</button>
+            <button class="btn dark">留下</button>
+          </form>
+          <div class="note-meta"><span>${sent ? `你${ago2(sent.at) === '刚刚' ? '' : ' '}${ago2(sent.at)}留的${sent.text ? '纸条' : '「想你了」'}，${sent.read ? `${nm(them)} 已经看到了` : `${nm(them)} 还没看到`}` : `${nm(them)} 下次打开首页就会看到`}</span>
+            ${notes.length ? '<button type="button" class="linkbtn" data-notes>以前的纸条</button>' : ''}</div>
+        </div>
+      </div>
 
       <div class="box">
         <div class="box-h"><i></i>Today's weather<span>今天的心情天气</span></div>
@@ -332,6 +406,40 @@ async function renderHome() {
     toast('心情已更新');
     renderHome();
   }));
+  clearInterval(clockTimer);
+  clockTimer = setInterval(() => app.querySelectorAll('[data-tz]').forEach((b) => { b.textContent = hhmm(b.dataset.tz); }), 20000);
+  const sendNote = async (text) => {
+    await post('/notes', { text });
+    toast(text ? `留好了，${names[them]} 打开就能看到` : `告诉 ${names[them]} 了`);
+    renderHome();
+  };
+  app.querySelector('#noteForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = e.target.text.value.trim();
+    if (!text) return toast('写一句再留，或者点「想你了」');
+    sendNote(text);
+  });
+  app.querySelector('[data-miss]').addEventListener('click', () => sendNote(''));
+  app.querySelector('[data-notes]')?.addEventListener('click', async () => {
+    const { items } = await api('/notes');
+    dialog(`<h3>以前的纸条</h3><ul class="note-list">${items.map((n) => `<li class="${n.from === me ? 'me' : ''}">
+      <span>${n.from === me ? '你' : nm(n.from)} · ${ago2(n.at)}</span><p>${noteText(n)}</p></li>`).join('')}</ul>`, { wide: true });
+  });
+  app.querySelector('[data-where]')?.addEventListener('click', async () => {
+    const cur = where[me];
+    const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const v = await dialog(`<h3>你现在在哪个城市</h3><p>${nm(them)} 会看到你那边现在几点。</p>
+      <select id="whereSel" style="margin-top:12px;width:100%">
+        ${CITIES.map(([c, tz]) => `<option value="${c}|${tz}" ${cur?.city === c ? 'selected' : ''}>${c}</option>`).join('')}
+        <option value="|${device}" ${cur && !cur.city ? 'selected' : ''}>不在列表里，用这台设备的时区（${esc(device)}）</option>
+      </select>
+      <div class="acts" style="margin-top:16px"><button class="btn" data-a="no">取消</button><button class="btn dark" data-a="ok">好了</button></div>`,
+    { onOk: (m) => m.querySelector('#whereSel').value });
+    if (!v) return;
+    const [city, tz] = v.split('|');
+    await post('/where', { city, tz });
+    renderHome();
+  });
   app.querySelector('[data-meet]').addEventListener('click', async () => {
     const v = await dialog(`<h3>下次见面</h3><p>两个人看到的是同一个倒数。日期清空就是还没定。</p>
       <div class="add two" style="margin-top:12px">
