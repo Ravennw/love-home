@@ -464,7 +464,7 @@ async function renderHome() {
   app.querySelector('[data-meet]').addEventListener('click', async () => {
     const v = await dialog(`<h3>下次见面</h3><p>两个人看到的是同一个倒数。日期清空就是还没定。</p>
       <div class="add two" style="margin-top:12px">
-        <input type="date" id="meetDay" value="${meet?.day || ''}" min="${data.today}">
+        <input type="date" id="meetDay" aria-label="见面日期" value="${meet?.day || ''}" min="${data.today}">
         <input type="text" id="meetPlace" maxlength="40" value="${esc(meet?.place || '')}" placeholder="在哪儿见（选填）">
       </div>
       <div class="acts" style="margin-top:16px"><button class="btn" data-a="no">取消</button><button class="btn dark" data-a="ok">好了</button></div>`,
@@ -505,7 +505,7 @@ async function renderMemory() {
         ${data.memories.length ? '' : '<p class="form-tip">第一段记忆会是什么？第一次见面、第一次一起做成的事，都可以。</p>'}
         <div class="add mem-add">
           <input type="text" name="title" maxlength="60" placeholder="这段记忆叫什么，比如 第一次一起看海">
-          <input type="date" name="day" value="${data.today}" max="${data.today}">
+          <input type="date" name="day" value="${data.today}" max="${data.today}" aria-label="哪一天">
         </div>
         <textarea name="body" rows="3" maxlength="3000" placeholder="那天发生了什么（选填）"></textarea>
         <div class="row">${shotField('配一张照片（选填）')}${data.memories.length ? '<button type="button" class="btn" data-memfold>收起</button>' : ''}<button class="btn dark">记下来</button></div>
@@ -959,7 +959,7 @@ async function renderManual() {
   const items = data.items.filter((i) => i.about === manualAbout);
   const section = ([cat, [title, hint]]) => {
     const list = items.filter((i) => i.category === cat);
-    return `<div class="cat ${cat}"><h4>${title}<span>${hint}</span></h4><div class="chips">
+    return `<div class="cat ${cat}"><h3>${title}<span>${hint}</span></h3><div class="chips">
       ${list.length ? list.map((i) => `<span class="chip" title="${esc(i.note || '')}">${esc(i.text)}
         ${i.author !== i.about ? `<small>${nm(i.author)} 记</small>` : ''}
         <button class="x" type="button" data-id="${i.id}" data-t="${esc(i.text)}" aria-label="删掉">${ICON.x}</button></span>`).join('')
@@ -1048,14 +1048,14 @@ async function renderMap() {
       </div>
       <div class="add${placeKind === 'want' ? ' nodate' : ''}">
         <input type="text" name="name" maxlength="40" placeholder="${pin ? '这是哪儿？比如 上海、京都' : '先在地图上点一下位置'}">
-        <input type="date" name="day" value="${todayStr()}" ${placeKind === 'want' ? 'hidden' : ''}>
+        <input type="date" name="day" value="${todayStr()}" aria-label="哪天去的" ${placeKind === 'want' ? 'hidden' : ''}>
         <input type="text" name="note" maxlength="300" placeholder="${placeKind === 'want' ? '为什么想去（选填）' : '一句话记下那天（选填）'}">
       </div>
       <div class="row">${shotField('配一张照片（选填）')}<button class="btn dark">记在地图上</button></div>
     </form>
     <div class="cats two sec">
-      <div class="cat"><h4>去过的<span>${been.length} 个地方</span></h4>${been.map(placeRow).join('') || '<p class="none">还没有，第一站会是哪里？</p>'}</div>
-      <div class="cat"><h4>想去的<span>${want.length} 个地方</span></h4>${want.map(placeRow).join('') || '<p class="none">点地图加一个想去的地方</p>'}</div>
+      <div class="cat"><h3>去过的<span>${been.length} 个地方</span></h3>${been.map(placeRow).join('') || '<p class="none">还没有，第一站会是哪里？</p>'}</div>
+      <div class="cat"><h3>想去的<span>${want.length} 个地方</span></h3>${want.map(placeRow).join('') || '<p class="none">点地图加一个想去的地方</p>'}</div>
     </div>`;
 
   const todo = ws.items.filter((w) => !w.done_day);
