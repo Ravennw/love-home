@@ -556,3 +556,10 @@ a.ext:hover { color: var(--t1); }
 
 /* 纪念日当天：胭脂色小标签（取自果蔬汁配方色），白字对比度足够 */
 .hero .tag .mark { font-style: normal; background: #9d2933; color: #fff; border-radius: 999px; padding: 2px 12px; }
+
+/* 那年今日：Today 框里轻轻一行，点进记忆本那一条 */
+.otd { display: flex; flex-direction: column; gap: 2px; background: #fff; border-radius: 6px; padding: 10px 16px; text-decoration: none; transition: background .2s; }
+.otd:hover { background: #fbfaf8; }
+.otd span { font-size: 12px; color: var(--t3); }
+.otd b { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem.flash, .dl.flash { box-shadow: 0 0 0 2px #c4a574; border-radius: 14px; transition: box-shadow .6s; }

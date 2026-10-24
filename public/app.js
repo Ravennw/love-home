@@ -350,6 +350,12 @@ async function renderHome() {
   const theirLine = `<div class="say"><span>${nm(them)}</span>${lines.today[them]
     ? `<p>${esc(lines.today[them])}</p>` : '<p class="dim">今天还没写</p>'}</div>`;
   const yday = USERS.filter((u) => lines.yesterday[u]);
+  // 那年今日：往年同一天有记忆或一句话才显示，没有就什么都不出现
+  const otd = data.onThisDay;
+  const otdWhen = otd ? `${otd.years === 1 ? '一年前' : `${otd.years} 年前`}的今天` : '';
+  const otdText = !otd ? '' : otd.memory
+    ? `<span>${otdWhen}</span><b>${esc(otd.memory.title)}</b>`
+    : `<span>${otdWhen}</span><b>${USERS.filter((u) => otd.lines[u]).map((u) => `${nm(u)}：${esc(otd.lines[u])}`).join('　')}</b>`;
 
   const clock = (u) => {
     const w = where[u];
@@ -408,6 +414,7 @@ async function renderHome() {
           <div class="box-h"><i></i>Today<span>每天一句话</span></div>
           <div class="well">
             ${myLine}${theirLine}
+            ${otd ? `<a class="otd" href="#/memory" data-otd>${otdText}</a>` : ''}
             <div class="note-meta"><span>${yday.length ? `昨天 · ${yday.map((u) => `${nm(u)}：${esc(lines.yesterday[u])}`).join('　')}` : '一天一句，攒在记忆本里'}</span>
               <a class="linkbtn" href="#/memory" data-to-lines>翻记忆本</a></div>
           </div>
@@ -446,6 +453,10 @@ async function renderHome() {
     }
   });
   app.querySelector('[data-to-lines]').addEventListener('click', () => { memoryTab = 'lines'; });
+  app.querySelector('[data-otd]')?.addEventListener('click', () => {
+    memoryTab = otd.memory ? 'memories' : 'lines';
+    focusMem = otd.memory ? `mem-${otd.memory.id}` : `dl-${otd.day}`;
+  });
   app.querySelector('[data-where]')?.addEventListener('click', async () => {
     const cur = where[me];
     const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -479,6 +490,7 @@ async function renderHome() {
 // ---------- Memory：时光记忆本（记忆 · 每天一句 · 写给未来） ----------
 
 let memFormOpen = false;
+let focusMem = null; // 从首页「那年今日」点进来时要滚到的那一条
 
 async function renderMemory() {
   const [data, letters] = await Promise.all([api('/memory'), api('/letters'), ensureMe()]);
@@ -495,7 +507,7 @@ async function renderMemory() {
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(m);
     }
-    const card = (m) => `<article class="mem">
+    const card = (m) => `<article class="mem" id="mem-${m.id}">
       ${m.photo_key ? `<img src="${photoUrl(m.photo_key)}" alt="" loading="lazy" data-photo="${esc(m.photo_key)}">` : ''}
       <div class="mem-in"><span>${fmtDay(m.day)} · ${nm(m.author)} 记</span><h4>${esc(m.title)}</h4>${m.body ? `<p>${esc(m.body)}</p>` : ''}
         <button class="mini" data-delmem="${m.id}" data-name="${esc(m.title)}">删</button></div></article>`;
@@ -515,7 +527,7 @@ async function renderMemory() {
   } else if (memoryTab === 'lines') {
     body = `
       <p class="intro">每天一句话，攒起来就是我们的日子。在首页写，这里只看。</p>
-      ${data.lines.length ? `<div class="daylines">${data.lines.map((l) => `<div class="dl">
+      ${data.lines.length ? `<div class="daylines">${data.lines.map((l) => `<div class="dl" id="dl-${l.day}">
         <span class="d">${fmtDay(l.day)}</span>
         ${USERS.map((u) => `<p class="${l[u] ? '' : 'dim'}"><b>${nm(u)}</b>${l[u] ? esc(l[u]) : '没写'}</p>`).join('')}
       </div>`).join('')}</div>` : '<p class="empty">今天写下第一句吧</p>'}`;
@@ -524,6 +536,14 @@ async function renderMemory() {
   }
 
   paint(win('Memory', '时光记忆本 · 记忆、每天一句、写给未来的信', tabs + body));
+  if (focusMem) {
+    const el = document.getElementById(focusMem);
+    focusMem = null;
+    if (el) {
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add('flash');
+    }
+  }
 
   app.querySelectorAll('[data-mtab]').forEach((b) => b.addEventListener('click', () => {
     memoryTab = b.dataset.mtab;

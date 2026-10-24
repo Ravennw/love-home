@@ -176,7 +176,8 @@ async function home(env, me) {
   const day = today(env);
   const yesterday = dayOf(Date.parse(`${day}T12:00:00+08:00`) - DAY_MS, env);
   const all = (sql, ...b) => env.DB.prepare(sql).bind(...b).all().then((r) => r.results);
-  const [lines, juice, meet, where, doing, films, song, goals] = await Promise.all([
+  const md = day.slice(5);
+  const [lines, juice, meet, where, doing, films, song, goals, pastMem, pastLines] = await Promise.all([
     all('SELECT day, user, text FROM lines WHERE day IN (?, ?)', day, yesterday),
     lastDrinks(env),
     getState(env, 'meet', null),
@@ -185,6 +186,9 @@ async function home(env, me) {
     all("SELECT id, title FROM items WHERE kind = 'film' AND status != 'done' ORDER BY created_at DESC"),
     env.DB.prepare("SELECT id, title, sub, author FROM items WHERE kind = 'song' ORDER BY created_at DESC LIMIT 1").first(),
     all("SELECT id, title, owner FROM items WHERE kind = 'goal' AND status != 'done' ORDER BY created_at"),
+    // 那年今日：往年同月同日的记忆和每天一句，取最近的那一年
+    env.DB.prepare('SELECT id, day, title FROM memories WHERE substr(day, 6) = ? AND day < ? ORDER BY day DESC, created_at LIMIT 1').bind(md, day).first(),
+    all('SELECT day, user, text FROM lines WHERE substr(day, 6) = ? AND day < ? ORDER BY day DESC LIMIT 2', md, day),
   ]);
   const pick = (d) => Object.fromEntries(USERS.map((u) => [u, lines.find((l) => l.day === d && l.user === u)?.text ?? null]));
   return json({
@@ -198,7 +202,18 @@ async function home(env, me) {
     meet: meet && meet.day >= day ? { ...meet, daysLeft: daysBetween(day, meet.day) } : null,
     where,
     together: { learning: doing, films: { count: films.length, next: films[0] || null }, song, goals },
+    onThisDay: onThisDay(day, pastMem, pastLines),
   });
+}
+
+// 那年今日：有记忆优先给记忆，没有就给那天两个人写的一句话；都没有返回 null，首页就不显示
+function onThisDay(day, mem, lines) {
+  const years = (d) => Number(day.slice(0, 4)) - Number(d.slice(0, 4));
+  if (mem) return { years: years(mem.day), day: mem.day, memory: { id: mem.id, title: mem.title } };
+  const ld = lines[0]?.day;
+  if (!ld) return null;
+  const same = lines.filter((l) => l.day === ld);
+  return { years: years(ld), day: ld, lines: Object.fromEntries(same.map((l) => [l.user, l.text])) };
 }
 
 // ---------- 每天一句话 ----------
